@@ -9,7 +9,7 @@ export const MOVES = Object.freeze({
 });
 export const GUARDS = {high:'前を守る',shell:'側面を固める',body:'胴を守る',open:'構えを緩める'};
 export const STANCES = Object.freeze({
-  orthodox:Object.freeze({name:'オーソドックス',lead:'L',rear:'R'}),
+  orthodox:Object.freeze({name:'オーソドックス',lead:'L',rear:'R',bodyYaw:-Math.PI/4,feetYaw:-Math.PI/4}),
 });
 export const STEP=1/60;
 export const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
@@ -87,6 +87,10 @@ export function slipOffset(f){return f.slip?(f.slip.side==='L'?1:-1)*.31*Math.si
 export function stanceRole(f,side){
   const stance=STANCES[f.stance]||STANCES.orthodox;
   return side===stance.lead?'lead':'rear';
+}
+export function stanceAngles(f){
+  const stance=STANCES[f.stance]||STANCES.orthodox;
+  return {bodyYaw:stance.bodyYaw,feetYaw:stance.feetYaw};
 }
 const guardPoint=(f,mode,side)=>{
   const sign=side==='L'?1:-1;

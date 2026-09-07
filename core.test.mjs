@@ -1,14 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createMatch,startMatch,pauseMatch,tick,STEP,STANCES,stanceRole,restingGlove,requestAttack,requestGuard,requestFeint,requestStep,requestSlip,observeOpponent,distance} from './core.mjs';
+import {createMatch,startMatch,pauseMatch,tick,STEP,STANCES,stanceRole,stanceAngles,restingGlove,requestAttack,requestGuard,requestFeint,requestStep,requestSlip,observeOpponent,distance} from './core.mjs';
 const run=(s,t,cpuEnabled=false)=>{for(let i=0;i<Math.round(t/STEP);i++)tick(s,STEP,{cpuEnabled});};
 const match=options=>{const s=createMatch(options);startMatch(s);return s;};
 const guard=(f,mode)=>{f.guard={from:mode,to:mode,t:3};};
 test('Orthodox stance keeps the left hand forward and the right hand rear in every guard',()=>{
   const s=createMatch();
-  assert.deepEqual(STANCES.orthodox,{name:'オーソドックス',lead:'L',rear:'R'});
+  assert.deepEqual(STANCES.orthodox,{name:'オーソドックス',lead:'L',rear:'R',bodyYaw:-Math.PI/4,feetYaw:-Math.PI/4});
   for(const f of s.fighters){
     assert.equal(f.stance,'orthodox');assert.equal(stanceRole(f,'L'),'lead');assert.equal(stanceRole(f,'R'),'rear');
+    assert.equal(Math.abs(stanceAngles(f).bodyYaw),Math.PI/4);assert.equal(Math.abs(stanceAngles(f).feetYaw),Math.PI/4);
     for(const mode of ['high','shell','body','open']){guard(f,mode);assert.ok(restingGlove(f,'L')[2]>restingGlove(f,'R')[2],mode+' guard must keep the left glove forward');}
   }
 });
