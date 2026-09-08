@@ -1,9 +1,90 @@
 import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,GUARDS,distance,currentGuard,requestAttack,requestGuard,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs';
+import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs';
 const $=id=>document.getElementById(id);
 let state=createMatch(),target='head',view=null,lastFrame=0,accumulator=0,lastUi=-1,lastEvent=0,dirty=true;
 let pauseReason='再開すると、同じ姿勢から続きます。';
+const KEY_STORAGE='super-slow-boxing.keymap.v1';
+let keyMap=loadSavedKeys(),listeningAction=null;
 const actionButtons=[...document.querySelectorAll('[data-attack],[data-guard],[data-step],[data-slip],#feint')];
 function applyResult(r){$('input-feedback').textContent=r.message;dirty=true;updateUI();}
+function loadSavedKeys(){
+  try{return normalizeKeymap(localStorage.getItem(KEY_STORAGE));}catch{return {...DEFAULT_KEYMAP};}
+}
+function persistKeys(){
+  try{localStorage.setItem(KEY_STORAGE,JSON.stringify(keyMap));return true;}catch{return false;}
+}
+function bindingById(id){return KEY_BINDINGS.find(action=>action.id===id);}
+function setKeyStatus(message){$('key-status').textContent=message;}
+function refreshKeyLabels(){
+  for(const action of KEY_BINDINGS){
+    const label=keyLabel(keyMap[action.id]);
+    const control=document.querySelector(action.selector)?.querySelector('kbd');
+    if(control)control.textContent=label;
+    const editor=document.querySelector(`[data-key-bind="${action.id}"]`);
+    if(editor){
+      const recording=listeningAction===action.id;
+      editor.setAttribute('aria-pressed',String(recording));editor.classList.toggle('recording',recording);
+      editor.querySelector('kbd').textContent=recording?'キーを押す…':label;
+    }
+  }
+}
+function buildKeySettings(){
+  const grid=$('key-grid');
+  for(const groupName of [...new Set(KEY_BINDINGS.map(action=>action.group))]){
+    const group=document.createElement('section');group.className='key-map-group';
+    const title=document.createElement('h3');title.textContent=groupName;group.append(title);
+    const list=document.createElement('div');list.className='key-map-list';group.append(list);
+    for(const action of KEY_BINDINGS.filter(item=>item.group===groupName)){
+      const row=document.createElement('div');row.className='key-map-row';
+      const label=document.createElement('span');label.textContent=action.label;
+      const button=document.createElement('button');button.type='button';button.dataset.keyBind=action.id;button.setAttribute('aria-label',action.label+'のキーを変更');
+      const key=document.createElement('kbd');button.append(key);button.addEventListener('click',()=>{
+        listeningAction=listeningAction===action.id?null:action.id;
+        setKeyStatus(listeningAction?action.label+'に割り当てるキーを押してください。Escで中止できます。':'キーの登録を中止しました。');
+        refreshKeyLabels();
+      });
+      row.append(label,button);list.append(row);
+    }
+    grid.append(group);
+  }
+  refreshKeyLabels();
+}
+function setKeySettingsOpen(open){
+  $('key-settings').hidden=!open;$('key-settings-toggle').setAttribute('aria-expanded',String(open));
+  if(open){
+    if(!$('help').hidden){$('help').hidden=true;$('help-toggle').setAttribute('aria-expanded','false');}
+    pause('キー設定を確認中です。再開すると同じ姿勢から続きます。');
+  }else if(listeningAction){listeningAction=null;setKeyStatus('キーの登録を中止しました。');refreshKeyLabels();}
+}
+function restoreDefaultKeys(){
+  keyMap={...DEFAULT_KEYMAP};listeningAction=null;
+  let saved=true;try{localStorage.removeItem(KEY_STORAGE);}catch{saved=false;}
+  setKeyStatus(saved?'初期設定へ戻しました。':'初期設定へ戻しました。このタブを閉じるまで有効です。');refreshKeyLabels();
+}
+function runKeyAction(action){
+  if(action.kind==='attack')applyResult(requestAttack(state,0,action.value,target));
+  else if(action.kind==='guard')applyResult(requestGuard(state,0,action.value));
+  else if(action.kind==='step')applyResult(requestStep(state,0,action.value));
+  else if(action.kind==='slip')applyResult(requestSlip(state,0,action.value));
+  else if(action.kind==='feint')applyResult(requestFeint(state,0));
+  else if(action.kind==='pause')togglePause();
+}
+function captureKey(e){
+  e.preventDefault();e.stopPropagation();
+  if(e.repeat)return;
+  if(e.code==='Escape'){
+    listeningAction=null;setKeyStatus('キーの登録を中止しました。');refreshKeyLabels();return;
+  }
+  if(!isAssignableKey(e.code)){
+    setKeyStatus('そのキーは登録できません。文字・数字・矢印など、単独の操作キーを押してください。');return;
+  }
+  const action=bindingById(listeningAction),result=assignKey(keyMap,listeningAction,e.code);keyMap=result.map;
+  const swapped=result.swappedActionId?bindingById(result.swappedActionId):null,saved=persistKeys();
+  let message=action.label+'を '+keyLabel(e.code)+' に変更しました。';
+  if(swapped)message+=' '+swapped.label+'は '+keyLabel(result.previousCode)+' に入れ替えました。';
+  if(!saved)message+=' このタブを閉じるまで有効です。';
+  listeningAction=null;setKeyStatus(message);refreshKeyLabels();
+}
 function reset(){state=createMatch({mode:$('mode').value,seed:Date.now()>>>0});accumulator=0;lastEvent=0;lastUi=-1;$('input-feedback').textContent='開始して、攻撃や守りを選んでください。';$('hit-feedback').textContent='命中・防御の理由をここに表示します。';$('hit-feedback').removeAttribute('data-impact');dirty=true;updateUI();}
 function pause(reason){if(state.phase==='running'){pauseMatch(state);pauseReason=reason||'再開すると、同じ姿勢から続きます。';accumulator=0;dirty=true;updateUI();}}
 function togglePause(){if(state.phase==='running')pause();else if(state.phase==='paused')resume();}
@@ -20,16 +101,17 @@ $('start').addEventListener('click',()=>{if(state.phase==='ended')reset();resume
 $('restart').addEventListener('click',reset);$('pause').addEventListener('click',togglePause);
 $('mode').addEventListener('change',reset);
 $('speed').addEventListener('change',()=>{accumulator=0;dirty=true;updateUI();});
-$('help-toggle').addEventListener('click',()=>{const open=$('help').hidden;$('help').hidden=!open;$('help-toggle').setAttribute('aria-expanded',String(open));if(open)pause('遊び方を確認中です。再開すると同じ姿勢から続きます。');});
-const attackKeys={KeyJ:'jab',KeyK:'cross',KeyU:'hookL',KeyI:'hookR',KeyN:'upperL',KeyM:'upperR'};
+$('help-toggle').addEventListener('click',()=>{const open=$('help').hidden;if(open)setKeySettingsOpen(false);$('help').hidden=!open;$('help-toggle').setAttribute('aria-expanded',String(open));if(open)pause('遊び方を確認中です。再開すると同じ姿勢から続きます。');});
+$('key-settings-toggle').addEventListener('click',()=>setKeySettingsOpen($('key-settings').hidden));
+$('key-settings-close').addEventListener('click',()=>setKeySettingsOpen(false));
+$('key-reset').addEventListener('click',restoreDefaultKeys);
 document.addEventListener('keydown',e=>{
-  if(e.repeat||e.altKey||e.ctrlKey||e.metaKey||e.isComposing||['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName))return;
-  if(e.code==='Space'){if(['BUTTON','A'].includes(e.target.tagName))return;e.preventDefault();togglePause();return;}
-  if(attackKeys[e.code]){e.preventDefault();applyResult(requestAttack(state,0,attackKeys[e.code],target));}
-  else if(['Digit1','Digit2','Digit3','Digit4'].includes(e.code)){e.preventDefault();applyResult(requestGuard(state,0,['high','shell','body','open'][Number(e.code.slice(-1))-1]));}
-  else if(e.code==='KeyF'){e.preventDefault();applyResult(requestFeint(state,0));}
-  else if(['KeyW','KeyS'].includes(e.code)){e.preventDefault();applyResult(requestStep(state,0,e.code==='KeyW'?'in':'out'));}
-  else if(['KeyA','KeyD'].includes(e.code)){e.preventDefault();applyResult(requestSlip(state,0,e.code==='KeyA'?'L':'R'));}
+  if(listeningAction){captureKey(e);return;}
+  const tag=e.target?.tagName;
+  if(e.repeat||e.altKey||e.ctrlKey||e.metaKey||e.isComposing||['INPUT','SELECT','TEXTAREA'].includes(tag))return;
+  const action=KEY_BINDINGS.find(item=>keyMap[item.id]===e.code);if(!action)return;
+  if(['BUTTON','A'].includes(tag)&&['Space','Enter'].includes(e.code))return;
+  e.preventDefault();runKeyAction(action);
 });
 document.addEventListener('visibilitychange',()=>{if(document.hidden)pause('画面を離れたため、一時停止しました。');});
 window.addEventListener('blur',()=>pause('別のウインドウへ移ったため、一時停止しました。'));
@@ -89,6 +171,6 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 if(new URLSearchParams(location.search).has('test')){
-  window.__boxingTest={snapshot:()=>structuredClone(state),advance(t,cpuEnabled=false){for(let n=0;n<Math.round(t/STEP);n++)tick(state,STEP,{cpuEnabled});updateUI();if(view)view.render(state);},reset(options){state=createMatch(options);lastEvent=0;updateUI();if(view)view.render(state);},ready:()=>!!view};
+  window.__boxingTest={snapshot:()=>structuredClone(state),keymap:()=>({...keyMap}),advance(t,cpuEnabled=false){for(let n=0;n<Math.round(t/STEP);n++)tick(state,STEP,{cpuEnabled});updateUI();if(view)view.render(state);},reset(options){state=createMatch(options);lastEvent=0;updateUI();if(view)view.render(state);},ready:()=>!!view};
 }
-updateUI();boot();
+buildKeySettings();updateUI();boot();
