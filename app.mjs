@@ -1,5 +1,5 @@
-import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.5';
-import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.5';
+import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.6';
+import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.6';
 const $=id=>document.getElementById(id);
 let state=createMatch(),target='head',view=null,lastFrame=0,accumulator=0,lastUi=-1,lastEvent=0,dirty=true;
 let pauseReason='再開すると、同じ姿勢から続きます。';
@@ -116,6 +116,8 @@ document.addEventListener('keydown',e=>{
 document.addEventListener('visibilitychange',()=>{if(document.hidden)pause('画面を離れたため、一時停止しました。');});
 window.addEventListener('blur',()=>pause('別のウインドウへ移ったため、一時停止しました。'));
 function handState(f,side){
+  const remaining=deflectionRemaining(f,side);
+  if(remaining>0)return '弾かれ中 '+remaining.toFixed(1)+' TU';
   if(f.attack&&MOVES[f.attack.id].side===side)return attackStatus(f).name;
   const hand=f.defense[side];
   if(hand.t<3)return DEFENSES[hand.to]+'へ移動中';
@@ -138,8 +140,11 @@ function updateUI(){
   $('pause').disabled=!['running','paused'].includes(state.phase);$('pause').firstChild.textContent=state.phase==='paused'?'再開 ':'一時停止 ';
   const newest=state.events.at(-1);
   if(newest&&newest.id!==lastEvent){
-    lastEvent=newest.id;const who=newest.who===0?'あなた':'CPU';
-    $('hit-feedback').textContent=who+'の'+MOVES[newest.move].name+'：'+newest.reason+(newest.damage?'（'+newest.damage+'ダメージ）':'');
+    lastEvent=newest.id;
+    if(newest.type==='clash'){
+      if(newest.who===null)$('hit-feedback').textContent=MOVES[newest.move].name+'と'+MOVES[newest.otherMove].name+'：'+newest.reason;
+      else{const winner=newest.who===0?'あなた':'CPU',loser=newest.loser===0?'あなた':'CPU';$('hit-feedback').textContent=winner+'の'+MOVES[newest.move].name+'が'+loser+'の'+MOVES[newest.otherMove].name+'を弾いた：'+newest.reason;}
+    }else{const who=newest.who===0?'あなた':'CPU';$('hit-feedback').textContent=who+'の'+MOVES[newest.move].name+'：'+newest.reason+(newest.damage?'（'+newest.damage+'ダメージ）':'');}
     $('hit-feedback').dataset.impact=newest.type;
   }
   $('overlay').hidden=state.phase==='running';
@@ -157,7 +162,7 @@ function updateUI(){
   }
 }
 async function boot(){
-  try{const {createView}=await import('./view.mjs?v=0.5');view=createView($('stage'));view.render(state);updateUI();}
+  try{const {createView}=await import('./view.mjs?v=0.6');view=createView($('stage'));view.render(state);updateUI();}
   catch(error){$('load-error').hidden=false;$('load-error').textContent='3D画面を起動できませんでした。WebGLに対応したブラウザで、このページを開き直してください。';$('start').textContent='3Dの起動に失敗';console.error(error);}
   requestAnimationFrame(frame);
 }
