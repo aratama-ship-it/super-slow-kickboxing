@@ -7,14 +7,14 @@ export function createView(container){
   const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
   renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
   renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;
-  renderer.domElement.setAttribute('aria-label','一人称のボクシング。相手の姿勢と自分のグローブを表示');
+  renderer.domElement.setAttribute('aria-label','一人称のボクシング。赤い自分のグローブと、青いグローブの相手を表示');
   renderer.domElement.setAttribute('role','img');container.append(renderer.domElement);
   scene.add(new THREE.HemisphereLight('#f1eee1','#354744',2.2));
   const key=new THREE.DirectionalLight('#fff2d7',3.8);key.position.set(-3,6,3);key.castShadow=true;key.shadow.mapSize.set(1024,1024);
   Object.assign(key.shadow.camera,{left:-4,right:4,top:4,bottom:-4,near:.1,far:14});key.shadow.bias=-.001;scene.add(key);
   const fill=new THREE.DirectionalLight('#bdd7d3',1.6);fill.position.set(3,3,-4);scene.add(fill);
   const material=(color,extra={})=>new THREE.MeshStandardMaterial({color,roughness:.73,metalness:.02,...extra});
-  const skin=material('#c6c2b1'),seams=material('#8d978c'),red=material('#a33c2c'),green=material('#347b68'),ivory=material('#ece9dd'),shorts=material('#4b605b'),boots=material('#253b3a');
+  const skin=material('#c6c2b1'),seams=material('#8d978c'),red=material('#a33c2c'),green=material('#347b68'),selfGlove=material('#c74a3a'),opponentGlove=material('#3f7fbe'),ivory=material('#ece9dd'),shorts=material('#4b605b'),boots=material('#253b3a');
   const sphere=new THREE.SphereGeometry(1,24,16),cylinder=new THREE.CylinderGeometry(1,1,1,16);
   const mesh=(geometry,mat,parent)=>{const m=new THREE.Mesh(geometry,mat);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m;};
   const ellipsoid=(parent,mat,xyz,scale)=>{const m=mesh(sphere,mat,parent);m.position.set(...xyz);m.scale.set(...scale);return m;};
@@ -36,7 +36,7 @@ export function createView(container){
   const actors=[];
   for(let index=0;index<2;index++){
     const root=new THREE.Group();scene.add(root);const a={root,torso:null,arms:{},gloves:{},elbows:{},shoulders:{},legs:[],head:null,chest:null};
-    const player=index===0,gloveMat=(player?green:red).clone();a.gloveMat=gloveMat;
+    const player=index===0,gloveMat=(player?selfGlove:opponentGlove).clone();a.gloveMat=gloveMat;
     if(!player){
       a.torso=new THREE.Group();root.add(a.torso);
       const profile=[[.0,.18],[.06,.22],[.19,.25],[.33,.34],[.43,.33],[.48,.26]].map(([y,r])=>new THREE.Vector2(r,y));
