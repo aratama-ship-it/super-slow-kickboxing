@@ -22,6 +22,7 @@ export const PARRY=Object.freeze({
   lift:.055,tapBelowGuard:.025,prepareForward:.08,tapForward:.10,
   deflectPeak:.45,deflectDrop:.18,deflectForward:.14,
 });
+export const JAB_LEAD_FOOT=Object.freeze({forward:.10,lift:.018,kneeForwardRatio:.45,deflectReturn:1.1});
 export const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
 const lerp=(a,b,t)=>a+(b-a)*t;
 const ease=t=>{t=clamp(t,0,1);return t*t*(3-2*t);};
@@ -94,7 +95,7 @@ export function requestFeint(s,who){
   if(!a){if(f.queue){f.queue=null;return result(f,true,'予約を取り消しました');}return result(f,false,'打ち始めてから「引く」を選びます');}
   const m=MOVES[a.id];
   if(a.feint||a.t>=m.cancel*(a.wind/m.wind)||a.hit)return result(f,false,'引ける区間を過ぎています');
-  a.cancelPose=gloveLocal(f,m.side);a.feint=true;a.feintStart=a.t;a.feintDuration=1.8;
+  a.cancelPose=gloveLocal(f,m.side);a.cancelFoot=a.id==='jab'?leadFootMotion(f):null;a.feint=true;a.feintStart=a.t;a.feintDuration=1.8;
   f.queue=null;f.stamina=Math.max(0,f.stamina-3);f.stats.feints++;
   return result(f,true,'攻撃を引いて構えへ戻ります');
 }
@@ -174,7 +175,8 @@ export function localToWorld(f,p){return [p[0]*f.face,p[1],f.z+p[2]*f.face];}
 export function bodyTarget(f,target){return localToWorld(f,[slipOffset(f),target==='head'?1.64:1.12,.10]);}
 function deflectHand(f,side,duration,trajectory='outward'){
   const from=gloveLocal(f,side).slice();
-  f.deflection[side]={t:0,duration,from,trajectory};
+  const jabFoot=f.attack?.id==='jab'?leadFootMotion(f):null;
+  f.deflection[side]={t:0,duration,from,trajectory,jabFoot};
   f.parry[side]=null;
   if(f.attack&&MOVES[f.attack.id].side===side)f.attack=null;
   if(f.queue&&MOVES[f.queue.id].side===side)f.queue=null;
@@ -189,6 +191,29 @@ export function punchTravelProgress(f){
   if(!a||a.feint)return 0;
   const cue=m.cue*(a.wind/m.wind);
   return ease((a.t-cue)/(a.wind-cue));
+}
+export function leadFootMotion(f){
+  const a=f.attack;
+  if(a?.id==='jab'){
+    if(a.feint){
+      const from=a.cancelFoot||{forward:0,lift:0},u=ease((a.t-a.feintStart)/a.feintDuration);
+      return {forward:lerp(from.forward,0,u),lift:lerp(from.lift,0,u),phase:'return'};
+    }
+    const m=MOVES.jab,cue=m.cue*(a.wind/m.wind);
+    if(a.t<cue)return {forward:0,lift:0,phase:'ready'};
+    if(a.t<a.wind){
+      const u=ease((a.t-cue)/(a.wind-cue));
+      return {forward:JAB_LEAD_FOOT.forward*u,lift:JAB_LEAD_FOOT.lift*Math.sin(Math.PI*u),phase:'advance'};
+    }
+    const u=ease((a.t-a.wind)/a.recover);
+    return {forward:JAB_LEAD_FOOT.forward*(1-u),lift:JAB_LEAD_FOOT.lift*.65*Math.sin(Math.PI*u),phase:'return'};
+  }
+  const stance=STANCES[f.stance]||STANCES.orthodox,d=f.deflection[stance.lead];
+  if(d?.jabFoot){
+    const u=ease(d.t/Math.min(d.duration,JAB_LEAD_FOOT.deflectReturn));
+    return {forward:lerp(d.jabFoot.forward,0,u),lift:lerp(d.jabFoot.lift,0,u)+JAB_LEAD_FOOT.lift*.45*Math.sin(Math.PI*u),phase:'return'};
+  }
+  return {forward:0,lift:0,phase:'ready'};
 }
 function resolveParries(s){
   const hits=[];

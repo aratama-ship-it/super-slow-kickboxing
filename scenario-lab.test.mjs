@@ -18,6 +18,9 @@ test('Case 01 proves a reactive, straight-down right parry redirects the jab aft
   assert.equal(run.impact.defenderRightDeflection,0);
   assert.equal(run.impact.defenderRightParry,'tap');
   assert.ok(run.defenseIssuedAt>MOVES.jab.cue);
+  assert.ok(run.leadFootPeak>=.075);
+  assert.ok(run.impact.attackerLeadFoot.forward>=.075&&run.impact.attackerLeadFoot.forward<=.09);
+  assert.ok(run.impact.attackerLeadFoot.lift>0);
   assert.ok(Math.abs(run.parryStart[0]-run.impact.defenderRightGlove[0])<.01);
   assert.ok(run.tapStart[1]-run.impact.defenderRightGlove[1]>=.04);
   assert.ok(run.rebound.forward>=.12);

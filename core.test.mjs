@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createMatch,startMatch,pauseMatch,tick,STEP,STANCES,MOVES,ARM_DEFLECT_TU,PARRY,CPU_REACTION_DELAY,stanceRole,stanceAngles,restingGlove,gloveLocal,parryStatus,currentDefense,deflectionRemaining,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,observeOpponent,distance} from './core.mjs';
+import {createMatch,startMatch,pauseMatch,tick,STEP,STANCES,MOVES,ARM_DEFLECT_TU,PARRY,JAB_LEAD_FOOT,CPU_REACTION_DELAY,stanceRole,stanceAngles,restingGlove,gloveLocal,leadFootMotion,parryStatus,currentDefense,deflectionRemaining,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,observeOpponent,distance} from './core.mjs';
 const run=(s,t,cpuEnabled=false)=>{for(let i=0;i<Math.round(t/STEP);i++)tick(s,STEP,{cpuEnabled});};
 const match=options=>{const s=createMatch(options);startMatch(s);return s;};
 const defend=(f,side,mode)=>{f.defense[side]={from:mode,to:mode,t:3};};
@@ -12,6 +12,23 @@ test('Orthodox stance keeps the left hand forward and the right hand rear in eve
     assert.equal(Math.abs(stanceAngles(f).bodyYaw),Math.PI/4);assert.equal(Math.abs(stanceAngles(f).feetYaw),Math.PI/4);
     for(const mode of ['block','body']){defend(f,'L',mode);defend(f,'R',mode);assert.ok(restingGlove(f,'L')[2]>restingGlove(f,'R')[2],mode+' defense must keep the left glove forward');}
   }
+});
+test('A jab advances and lifts the lead foot with the glove, then returns it to stance',()=>{
+  const s=match();requestAttack(s,0,'jab');run(s,3.3);
+  const advancing=leadFootMotion(s.fighters[0]);
+  assert.equal(advancing.phase,'advance');assert.ok(advancing.forward>.03&&advancing.forward<.08);assert.ok(advancing.lift>.012);
+  run(s,.7);const planted=leadFootMotion(s.fighters[0]);
+  assert.ok(Math.abs(planted.forward-JAB_LEAD_FOOT.forward)<.002);assert.ok(planted.lift<.002);
+  run(s,.8);const returning=leadFootMotion(s.fighters[0]);
+  assert.equal(returning.phase,'return');assert.ok(returning.forward>0&&returning.forward<JAB_LEAD_FOOT.forward);assert.ok(returning.lift>0);
+  run(s,1.6);assert.deepEqual(leadFootMotion(s.fighters[0]),{forward:0,lift:0,phase:'ready'});
+  const cross=match();requestAttack(cross,0,'cross');run(cross,4);assert.deepEqual(leadFootMotion(cross.fighters[0]),{forward:0,lift:0,phase:'ready'});
+});
+test('A parried jab returns the lead foot smoothly after the attacking arm is deflected',()=>{
+  const s=match();requestAttack(s,0,'jab');run(s,3);requestDefense(s,1,'R','parry');run(s,.7);
+  assert.equal(s.fighters[0].attack,null);assert.ok(leadFootMotion(s.fighters[0]).forward>.07);
+  run(s,.5);assert.ok(leadFootMotion(s.fighters[0]).forward>0);
+  run(s,.7);const recovered=leadFootMotion(s.fighters[0]);assert.equal(recovered.phase,'return');assert.ok(recovered.forward<1e-9&&recovered.lift<1e-9);
 });
 test('A small right downward tap can react after the jab is visible and parry after 80% travel',()=>{
   const reactive=match();requestAttack(reactive,0,'jab');run(reactive,3);assert.ok(reactive.fighters[0].attack.t>MOVES.jab.cue);requestDefense(reactive,1,'R','parry');run(reactive,1.1);

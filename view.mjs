@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,gloveLocal,slipOffset,localToWorld,stanceAngles,parryStatus,clamp} from './core.mjs?v=0.14';
+import {MOVES,gloveLocal,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,parryStatus,clamp} from './core.mjs?v=0.15';
 
 export function createView(container){
   const scene=new THREE.Scene();scene.background=new THREE.Color('#172a2c');scene.fog=new THREE.Fog('#172a2c',5,16);
@@ -77,16 +77,17 @@ export function createView(container){
       const f=s.fighters[i],a=actors[i];a.root.position.set(0,0,f.z);a.root.rotation.y=f.face===1?0:Math.PI;
       const attack=f.attack,m=attack?MOVES[attack.id]:null;
       const drive=attack&&!attack.feint?Math.sin(Math.PI*clamp(attack.t/(attack.wind+attack.recover),0,1))*.1:0;
-      const headX=slipOffset(f),angles=stanceAngles(f);
+      const headX=slipOffset(f),angles=stanceAngles(f),jabFoot=leadFootMotion(f);
       if(a.torso)a.torso.rotation.y=angles.bodyYaw;
       if(a.head){a.head.position.x=headX;a.head.rotation.z=-headX*.3;a.head.position.z=drive*.35;a.chest.rotation.z=-headX*.12;}
       for(const leg of a.legs){
         const sign=leg.side==='L'?1:-1;
         const [hipX,hipZ]=rotateXZ(sign*.15,0,angles.bodyYaw),[kneeX,kneeZ]=rotateXZ(sign*.19,.02,angles.bodyYaw),[footX,footZ]=rotateXZ(sign*.26,.03,angles.bodyYaw);
-        const hip=[hipX,.83,hipZ],knee=[kneeX,.48,kneeZ],foot=[footX,.12,footZ];
+        const lead=stanceRole(f,leg.side)==='lead',forward=lead?jabFoot.forward:0,lift=lead?jabFoot.lift:0;
+        const hip=[hipX,.83,hipZ],knee=[kneeX,.48+lift*.25,kneeZ+forward*.45],foot=[footX,.12+lift,footZ+forward];
         const [toeX,toeZ]=rotateXZ(0,.06,angles.feetYaw);
         setSegment(leg.thigh,hip,knee);setSegment(leg.shin,knee,foot);leg.kneeJoint.position.set(...knee);
-        leg.boot.position.set(foot[0]+toeX,.075,foot[2]+toeZ);leg.boot.rotation.y=angles.feetYaw;
+        leg.boot.position.set(foot[0]+toeX,.075+lift,foot[2]+toeZ);leg.boot.rotation.y=angles.feetYaw;
         leg.hem.position.set(hip[0],.78,hip[2]);leg.hem.rotation.y=angles.bodyYaw;
       }
       for(const side of ['L','R']){
