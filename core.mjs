@@ -18,7 +18,7 @@ export const ARM_DEFLECT_TU=4;
 export const EQUAL_CLASH_DEFLECT_TU=3;
 export const PARRY=Object.freeze({
   prepare:.18,tap:.55,recover:.9,cost:5,contactDistance:.24,
-  contactProgress:.70,progressTolerance:.025,
+  contactProgress:Object.freeze({jab:.80,cross:.70}),progressTolerance:.025,
   lift:.055,tapBelowGuard:.025,prepareForward:.08,tapForward:.10,
   deflectPeak:.45,deflectDrop:.18,deflectForward:.14,
 });
@@ -197,11 +197,12 @@ function resolveParries(s){
     const d=s.fighters[1-f.id],side=punch.m.side==='L'?'R':'L',p=parryStatus(d,side);
     if(!p||p.phase!=='tap'||p.used||deflectionRemaining(d,side)>0)continue;
     const progress=punchTravelProgress(f);
-    if(Math.abs(progress-PARRY.contactProgress)>PARRY.progressTolerance)continue;
+    const targetProgress=PARRY.contactProgress[punch.a.id];
+    if(targetProgress===undefined||progress<targetProgress||progress>targetProgress+PARRY.progressTolerance)continue;
     const incoming=localToWorld(f,gloveLocal(f,punch.m.side)),parryGlove=localToWorld(d,gloveLocal(d,side));
     if(Math.hypot(...incoming.map((v,i)=>v-parryGlove[i]))>PARRY.contactDistance)continue;
     hits.push({who:f.id,move:punch.a.id,target:'head',type:'block',defense:'parry',damage:0,deflectSide:punch.m.side,deflectTrajectory:'parry-down',parrySide:side,punchProgress:progress,
-      reason:(side==='L'?'左手':'右手')+'で進行'+Math.round(progress*100)+'%の拳を上から小さく叩き、攻撃側の'+(punch.m.side==='L'?'左拳':'右拳')+'を下へ弾いた'});
+      reason:(side==='L'?'左手':'右手')+'で進行約'+Math.round(targetProgress*100)+'%の拳を上から小さく叩き、攻撃側の'+(punch.m.side==='L'?'左拳':'右拳')+'を下へ弾いた'});
   }
   // Both fighters' contacts are sampled before either arm is displaced.
   for(const h of hits)s.fighters[1-h.who].parry[h.parrySide].used=true;

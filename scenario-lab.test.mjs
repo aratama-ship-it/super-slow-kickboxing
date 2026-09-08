@@ -9,11 +9,11 @@ test('The lab presents jab defenses as separate ordered cases',()=>{
   assert.deepEqual(LAB_CASES.map(item=>item.number),['01','02']);
 });
 
-test('Case 01 proves a reactive, straight-down right parry redirects the jab at about 70% travel',()=>{
+test('Case 01 proves a reactive, straight-down right parry redirects the jab after 80% travel',()=>{
   const run=runLabToCompletion(0);
   assert.equal(run.status,'complete');
   assert.equal(run.impact.event.defense,'parry');
-  assert.ok(run.impact.event.punchProgress>=.675&&run.impact.event.punchProgress<=.725);
+  assert.ok(run.impact.event.punchProgress>=.80&&run.impact.event.punchProgress<=.825);
   assert.equal(run.impact.attackerLeftDeflection>3.8,true);
   assert.equal(run.impact.defenderRightDeflection,0);
   assert.equal(run.impact.defenderRightParry,'tap');
