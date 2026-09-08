@@ -12,12 +12,15 @@ export const STANCES = Object.freeze({
   orthodox:Object.freeze({name:'オーソドックス',lead:'L',rear:'R',bodyYaw:-Math.PI/4,feetYaw:-Math.PI/4}),
 });
 export const STEP=1/60;
+export const CPU_REACTION_DELAY=.25;
 export const PUNCH_CLASH_DISTANCE=.2;
 export const ARM_DEFLECT_TU=4;
 export const EQUAL_CLASH_DEFLECT_TU=3;
 export const PARRY=Object.freeze({
-  prepare:2,tap:.8,recover:1.8,cost:5,contactDistance:.24,
-  contactProgress:.70,progressTolerance:.025,deflectPeak:.65,deflectDrop:.28,deflectForward:.22,
+  prepare:.18,tap:.55,recover:.9,cost:5,contactDistance:.24,
+  contactProgress:.70,progressTolerance:.025,
+  lift:.055,tapBelowGuard:.025,prepareForward:.08,tapForward:.10,
+  deflectPeak:.45,deflectDrop:.18,deflectForward:.14,
 });
 export const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
 const lerp=(a,b,t)=>a+(b-a)*t;
@@ -144,8 +147,9 @@ export function gloveLocal(f,side){
     return mix(peak,[base[0]+slipOffset(f)*.6,base[1],base[2]],ease((d.t-out)/(d.duration-out)));
   }
   if(p){
-    const sign=side==='L'?1:-1,offset=slipOffset(f)*.6,depth=stanceRole(f,side)==='lead'?.06:-.04;
-    const above=[sign*-.10+offset,1.72,.36+depth],tap=[sign*-.08+offset,1.56,.42+depth];
+    const offset=slipOffset(f)*.6;
+    const above=[p.from[0],p.from[1]+PARRY.lift,p.from[2]+PARRY.prepareForward];
+    const tap=[p.from[0],p.from[1]-PARRY.tapBelowGuard,p.from[2]+PARRY.tapForward];
     if(p.t<PARRY.prepare)return mix(p.from,above,ease(p.t/PARRY.prepare));
     if(p.t<PARRY.prepare+PARRY.tap)return mix(above,tap,ease((p.t-PARRY.prepare)/PARRY.tap));
     return mix(tap,[base[0]+offset,base[1],base[2]],ease((p.t-PARRY.prepare-PARRY.tap)/PARRY.recover));
@@ -260,21 +264,20 @@ export function observeOpponent(s,who){
 function random(s){s.seed=(Math.imul(s.seed,1664525)+1013904223)>>>0;return s.seed/4294967296;}
 function cpu(s){
   const ai=s.ai,f=s.fighters[1];
-  if(s.time>=ai.observeAt){ai.observations.push(observeOpponent(s,1));ai.observeAt=s.time+.5;}
+  if(s.time>=ai.observeAt){ai.observations.push(observeOpponent(s,1));ai.observeAt=s.time+.1;}
   let observation=null;
-  while(ai.observations.length&&ai.observations[0].time<=s.time-1.2)observation=ai.observations.shift();
+  while(ai.observations.length&&ai.observations[0].time<=s.time-CPU_REACTION_DELAY)observation=ai.observations.shift();
   if(observation)ai.latest=observation;
   if(observation&&s.mode==='spar'){
     const a=observation.action;
     if(a&&a.phase==='windup'&&a.serial!==ai.lastReacted){
       const side=a.side==='L'?'R':'L';
-      if(!a.kind&&a.serial!==ai.lastPredicted){
-        ai.lastPredicted=a.serial;
-        // Predict from a visible starting arm, before the path/target is known.
-        if(random(s)<.4&&requestDefense(s,1,side,'parry').ok)ai.lastReacted=a.serial;
-      }else if(a.kind){
+      if(a.kind){
         ai.lastReacted=a.serial;
-        if(random(s)<.75)requestDefense(s,1,side,a.target==='body'?'body':'block');
+        if(random(s)<.75){
+          const reactiveJab=a.side==='L'&&a.kind==='straight'&&a.target==='head'&&random(s)<.45;
+          requestDefense(s,1,side,reactiveJab?'parry':a.target==='body'?'body':'block');
+        }
       }
     }
   }
@@ -286,7 +289,7 @@ function cpu(s){
     if(distance(s)>1.30){requestStep(s,1,'in');return;}
     requestAttack(s,1,'jab','head');return;
   }
-  const obs=ai.latest; // Delayed, public pose only; never input queues or unexposed move IDs.
+  const obs=ai.latest; // Reaction-delayed public pose only; never input queues or unexposed move IDs.
   if(!obs)return;
   if(f.stamina<25){requestDefense(s,1,'L','block');requestDefense(s,1,'R','block');if(distance(s)<1.45)requestStep(s,1,'out');return;}
   if(obs.distance>1.4){requestStep(s,1,'in');return;}

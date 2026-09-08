@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {MOVES} from './core.mjs';
 import {LAB_CASES,runLabToCompletion} from './scenario-lab.mjs';
 
 test('The lab presents jab defenses as separate ordered cases',()=>{
@@ -8,7 +9,7 @@ test('The lab presents jab defenses as separate ordered cases',()=>{
   assert.deepEqual(LAB_CASES.map(item=>item.number),['01','02']);
 });
 
-test('Case 01 proves a small downward right parry redirects the jab at about 70% travel',()=>{
+test('Case 01 proves a reactive, straight-down right parry redirects the jab at about 70% travel',()=>{
   const run=runLabToCompletion(0);
   assert.equal(run.status,'complete');
   assert.equal(run.impact.event.defense,'parry');
@@ -16,9 +17,11 @@ test('Case 01 proves a small downward right parry redirects the jab at about 70%
   assert.equal(run.impact.attackerLeftDeflection>3.8,true);
   assert.equal(run.impact.defenderRightDeflection,0);
   assert.equal(run.impact.defenderRightParry,'tap');
-  assert.ok(run.tapStart[1]-run.impact.defenderRightGlove[1]>=.08);
-  assert.ok(run.rebound.forward>=.20);
-  assert.ok(run.rebound.downward>=.26);
+  assert.ok(run.defenseIssuedAt>MOVES.jab.cue);
+  assert.ok(Math.abs(run.parryStart[0]-run.impact.defenderRightGlove[0])<.01);
+  assert.ok(run.tapStart[1]-run.impact.defenderRightGlove[1]>=.04);
+  assert.ok(run.rebound.forward>=.12);
+  assert.ok(run.rebound.downward>=.16);
   assert.equal(run.checks.length,5);
   assert.equal(run.checks.every(check=>check.pass),true);
 });

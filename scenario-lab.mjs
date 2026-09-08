@@ -1,5 +1,6 @@
 import {
   ARM_DEFLECT_TU,
+  MOVES,
   PARRY,
   STEP,
   createMatch,
@@ -12,15 +13,15 @@ import {
   requestDefense,
   startMatch,
   tick,
-} from './core.mjs?v=0.12';
+} from './core.mjs?v=0.13';
 
 export const LAB_CASES=Object.freeze([
   Object.freeze({
     id:'jab-right-parry',number:'01',title:'相手の左ジャブ × 右手パーリング',
-    question:'進行70%付近で上から小さく叩くと、相手の左拳が前進しながら下へ外れるか。',
-    defense:'右手パーリング',defenseAt:1,
-    conditions:Object.freeze(['パンチの間合い','相手は頭へ左ジャブ','ジャブ開始1.0 TU後に右手パーリング','拳の進行69〜72%付近で接触','他の入力なし']),
-    expected:'右手を上から小さく落とす。相手の左拳は自分へ進みながら下へ外れ、ダメージ0。相手の左腕だけが4 TU使用不能。',
+    question:'ジャブが見えてから、右手を真上から小さく落として進行70%付近の拳を下へ外せるか。',
+    defense:'右手パーリング',defenseAt:3,
+    conditions:Object.freeze(['パンチの間合い','相手は頭へ左ジャブ','ジャブの軌道が見える2.7 TU後まで待つ','開始3.0 TUで右手パーリング','拳の進行69〜72%付近で接触','他の入力なし']),
+    expected:'右手は内側へ入れず、ガード位置の真上から小さく落とす。相手の左拳は自分へ進みながら下へ外れ、ダメージ0。相手の左腕だけが4 TU使用不能。',
   }),
   Object.freeze({
     id:'jab-right-block',number:'02',title:'相手の左ジャブ × 右手ブロッキング',
@@ -54,8 +55,8 @@ const captureRebound=(state,impact)=>{
 function completeChecks(run){
   const {state,definition,impact}=run,event=impact?.event;
   if(definition.id==='jab-right-parry')return [
-    {label:'ジャブ進行70%付近で接触',pass:event?.type==='block'&&event?.defense==='parry'&&Math.abs(event.punchProgress-PARRY.contactProgress)<=PARRY.progressTolerance},
-    {label:'自分の右手を上から小さく下ろした',pass:run.tapStart&&impact.defenderRightParry==='tap'&&run.tapStart[1]-impact.defenderRightGlove[1]>=.08&&Math.abs(run.tapStart[0]-impact.defenderRightGlove[0])<.08},
+    {label:'ジャブが見えてから入力し、進行70%付近で接触',pass:run.defenseIssuedAt>MOVES.jab.cue&&event?.type==='block'&&event?.defense==='parry'&&Math.abs(event.punchProgress-PARRY.contactProgress)<=PARRY.progressTolerance},
+    {label:'右手を内側へ入れず、真上から小さく下ろした',pass:run.parryStart&&run.tapStart&&impact.defenderRightParry==='tap'&&run.tapStart[1]-run.parryStart[1]>=.04&&run.tapStart[1]-run.parryStart[1]<=.07&&run.tapStart[1]-impact.defenderRightGlove[1]>=.04&&run.tapStart[1]-impact.defenderRightGlove[1]<=.08&&Math.abs(run.parryStart[0]-run.tapStart[0])<.01&&Math.abs(run.tapStart[0]-impact.defenderRightGlove[0])<.01},
     {label:'自分はダメージ0、右腕は弾かれない',pass:event?.damage===0&&impact.playerHp===100&&impact.defenderRightDeflection===0},
     {label:'相手の左拳だけが前進しながら下へ弾かれた',pass:impact.attackerLeftDeflection>ARM_DEFLECT_TU-.2&&run.rebound?.forward>=PARRY.deflectForward-.02&&run.rebound?.downward>=PARRY.deflectDrop-.02},
     {label:'両者の該当腕が規定の動作を終えて復帰',pass:deflectionRemaining(state.fighters[1],'L')===0&&!parryStatus(state.fighters[0],'R')&&currentDefense(state.fighters[0],'R')==='block'},
@@ -76,7 +77,7 @@ export function createLabRun(caseIndex=0){
   startMatch(state);
   const started=requestAttack(state,1,'jab','head');
   if(!started.ok)throw new Error(started.message);
-  return {definition,caseIndex,state,status:'running',defenseIssued:false,tapStart:null,impact:null,rebound:null,checks:[]};
+  return {definition,caseIndex,state,status:'running',defenseIssued:false,defenseIssuedAt:null,parryStart:null,tapStart:null,impact:null,rebound:null,checks:[]};
 }
 
 export function advanceLabRun(run,dt=STEP){
@@ -84,9 +85,11 @@ export function advanceLabRun(run,dt=STEP){
   const previousEventId=run.state.eventId;
   tick(run.state,dt,{cpuEnabled:false});
   if(run.definition.defenseAt!==null&&!run.defenseIssued&&run.state.time>=run.definition.defenseAt){
+    run.parryStart=gloveLocal(run.state.fighters[0],'R').slice();
     const defense=requestDefense(run.state,0,'R','parry');
     if(!defense.ok)throw new Error(defense.message);
     run.defenseIssued=true;
+    run.defenseIssuedAt=run.state.time;
   }
   if(!run.tapStart&&parryStatus(run.state.fighters[0],'R')?.phase==='tap')run.tapStart=gloveLocal(run.state.fighters[0],'R').slice();
   if(!run.impact&&run.state.eventId>previousEventId){
