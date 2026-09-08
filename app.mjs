@@ -1,5 +1,5 @@
-import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.6';
-import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.6';
+import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.7';
+import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.7';
 const $=id=>document.getElementById(id);
 let state=createMatch(),target='head',view=null,lastFrame=0,accumulator=0,lastUi=-1,lastEvent=0,dirty=true;
 let pauseReason='再開すると、同じ姿勢から続きます。';
@@ -118,6 +118,8 @@ window.addEventListener('blur',()=>pause('別のウインドウへ移ったた�
 function handState(f,side){
   const remaining=deflectionRemaining(f,side);
   if(remaining>0)return '弾かれ中 '+remaining.toFixed(1)+' TU';
+  const parry=parryStatus(f,side);
+  if(parry){const phase=parry.phase==='prepare'?'払いの準備':parry.phase==='sweep'?(parry.used?'払った手を外へ':parry.direction+'へ払う'):'払いから戻る';return phase+' '+parry.remaining.toFixed(1)+' TU';}
   if(f.attack&&MOVES[f.attack.id].side===side)return attackStatus(f).name;
   const hand=f.defense[side];
   if(hand.t<3)return DEFENSES[hand.to]+'へ移動中';
@@ -131,9 +133,14 @@ function updateUI(){
   $('clock').textContent=Math.floor(seconds/60)+':'+String(seconds%60).padStart(2,'0');$('clock-kind').textContent='いまの速度での残り時間';
   const d=distance(state);$('distance').textContent=d>1.65?'遠い間合い':d<1.12?'近い間合い':'パンチの間合い';
   $('left-state').textContent=handState(p,'L');$('right-state').textContent=handState(p,'R');
+  for(const [side,id] of [['L','left-state'],['R','right-state']])$(id).dataset.phase=parryStatus(p,side)?.phase||'';
   $('queue').textContent=p.queue?MOVES[p.queue.id].name+' → '+(p.queue.target==='head'?'頭':'胴'):'予約なし';
   $('clear-queue').disabled=!p.queue||state.phase!=='running';
-  document.querySelectorAll('[data-defense]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.defense===p.defense[b.dataset.defenseSide].to)));
+  document.querySelectorAll('[data-defense]').forEach(b=>{
+    const side=b.dataset.defenseSide,parry=parryStatus(p,side);
+    if(b.dataset.defense==='parry'){b.removeAttribute('aria-pressed');b.dataset.phase=parry?.phase||'';}
+    else b.setAttribute('aria-pressed',String(!parry&&b.dataset.defense===p.defense[side].to));
+  });
   actionButtons.forEach(b=>b.disabled=state.phase!=='running');
   const a=p.attack,m=a?MOVES[a.id]:null;
   $('feint-window').textContent=!a?'打ち始めの区間だけ引き返せます。':a.feint?'引いています。次の技は戻ってから。':a.t<m.cancel*(a.wind/m.wind)?'いまは「引く」を選べます。':'打ち切る区間です。戻りを待ちます。';
@@ -162,7 +169,7 @@ function updateUI(){
   }
 }
 async function boot(){
-  try{const {createView}=await import('./view.mjs?v=0.6');view=createView($('stage'));view.render(state);updateUI();}
+  try{const {createView}=await import('./view.mjs?v=0.7');view=createView($('stage'));view.render(state);updateUI();}
   catch(error){$('load-error').hidden=false;$('load-error').textContent='3D画面を起動できませんでした。WebGLに対応したブラウザで、このページを開き直してください。';$('start').textContent='3Dの起動に失敗';console.error(error);}
   requestAnimationFrame(frame);
 }

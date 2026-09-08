@@ -15,12 +15,13 @@ export const STEP=1/60;
 export const PUNCH_CLASH_DISTANCE=.2;
 export const ARM_DEFLECT_TU=4;
 export const EQUAL_CLASH_DEFLECT_TU=3;
+export const PARRY=Object.freeze({prepare:2.4,sweep:1.6,recover:2.4,cost:5,contactDistance:.22});
 export const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
 const lerp=(a,b,t)=>a+(b-a)*t;
 const ease=t=>{t=clamp(t,0,1);return t*t*(3-2*t);};
 const mix=(a,b,t)=>a.map((v,i)=>lerp(v,b[i],t));
 const defense=mode=>({from:mode,to:mode,t:3});
-function fighter(id){return {id,stance:'orthodox',z:id===0?.65:-.65,face:id===0?-1:1,hp:100,stamina:100,defense:{L:defense('block'),R:defense('block')},deflection:{L:null,R:null},attack:null,queue:null,movement:null,slip:null,hitFlash:0,blockedFlash:0,stats:{hits:0,blocks:0,misses:0,feints:0,clashes:0,deflected:0,damage:0},lastReason:''};}
+function fighter(id){return {id,stance:'orthodox',z:id===0?.65:-.65,face:id===0?-1:1,hp:100,stamina:100,defense:{L:defense('block'),R:defense('block')},parry:{L:null,R:null},deflection:{L:null,R:null},attack:null,queue:null,movement:null,slip:null,hitFlash:0,blockedFlash:0,stats:{hits:0,blocks:0,misses:0,feints:0,clashes:0,deflected:0,damage:0},lastReason:''};}
 export function createMatch({seed=1729,mode='spar',duration=180}={}){
   return {phase:'ready',time:0,duration,mode,fighters:[fighter(0),fighter(1)],events:[],eventId:0,winner:null,seed:seed>>>0,
     ai:{next:3.5,observeAt:0,observations:[],latest:null,feintAt:null,lastReacted:null},sequence:0};
@@ -31,17 +32,26 @@ export function distance(s){return Math.abs(s.fighters[0].z-s.fighters[1].z);}
 function event(s,data){s.events.push({id:++s.eventId,time:s.time,...data});if(s.events.length>8)s.events.shift();}
 function result(f,ok,message){f.lastReason=message;return {ok,message};}
 export function currentDefense(f,side){
+  const p=parryStatus(f,side);
+  if(p)return p.phase==='sweep'&&!f.parry[side].used?'parry':'open';
   const hand=f.defense[side];
   if(hand.t>=3)return hand.to;
   const ratio=hand.t/3;
   return ratio<.25?hand.from:ratio>.85?hand.to:'open';
 }
 export function deflectionRemaining(f,side){const d=f.deflection[side];return d?Math.max(0,d.duration-d.t):0;}
+export function parryStatus(f,side){
+  const p=f.parry[side];if(!p)return null;
+  const phase=p.t<PARRY.prepare?'prepare':p.t<PARRY.prepare+PARRY.sweep?'sweep':'return';
+  const end=phase==='prepare'?PARRY.prepare:phase==='sweep'?PARRY.prepare+PARRY.sweep:PARRY.prepare+PARRY.sweep+PARRY.recover;
+  return {phase,remaining:Math.max(0,end-p.t),direction:side==='L'?'左外':'右外',used:p.used};
+}
 export function available(s,who,id){
   const f=s.fighters[who],m=MOVES[id];
   if(!m)return {ok:false,message:'技が見つかりません'};
   if(s.phase!=='running')return {ok:false,message:'開始・再開してから操作できます'};
   if(deflectionRemaining(f,m.side)>0)return {ok:false,message:(m.side==='L'?'左腕':'右腕')+'が弾かれているため攻撃できません'};
+  if(f.parry[m.side])return {ok:false,message:'パーリングの手を戻してから打てます'};
   if(f.movement)return {ok:false,message:'足を置き終えるまで待ちます'};
   if(f.slip)return {ok:false,message:'頭を戻してから打てます'};
   if(f.stamina<m.cost)return {ok:false,message:'スタミナを回復してから打てます'};
@@ -59,7 +69,16 @@ export function requestDefense(s,who,side,mode){
   const f=s.fighters[who];if(!['L','R'].includes(side)||!(mode in DEFENSES))return result(f,false,'左右の手と守りを選んでください');
   if(s.phase!=='running')return result(f,false,'開始・再開してから操作できます');
   if(deflectionRemaining(f,side)>0)return result(f,false,(side==='L'?'左腕':'右腕')+'が弾かれているため防御できません');
+  if(f.parry[side])return result(f,false,'パーリングの手が戻るまで変更できません');
   const hand=f.defense[side],name=(side==='L'?'左手':'右手')+DEFENSES[mode];
+  if(mode==='parry'){
+    if(f.attack&&MOVES[f.attack.id].side===side)return result(f,false,'打っている手が戻ってからパーリングできます');
+    if(f.stamina<PARRY.cost)return result(f,false,'スタミナを回復してからパーリングできます');
+    const from=gloveLocal(f,side).slice();
+    f.parry[side]={t:0,from,used:false};f.stamina-=PARRY.cost;
+    if(f.queue&&MOVES[f.queue.id].side===side)f.queue=null;
+    return result(f,true,name+'：準備して'+(side==='L'?'左外':'右外')+'へ払います');
+  }
   if(hand.to===mode)return result(f,true,name+'を維持');
   f.defense[side]={from:currentDefense(f,side),to:mode,t:0};return result(f,true,name+'へ移動中');
 }
@@ -104,18 +123,24 @@ export function stanceAngles(f){
 const defensePoint=(f,mode,side)=>{
   const sign=side==='L'?1:-1;
   const depth=stanceRole(f,side)==='lead'?.12:-.08;
-  if(mode==='parry')return [sign*.15,1.52,.37+depth];
   if(mode==='block')return [sign*.25,1.56,.27+depth];
   if(mode==='body')return [sign*.19,1.13,.30+depth];
   return [sign*.32,1.24,.08+depth];
 };
 export function restingGlove(f,side){const hand=f.defense[side];return mix(defensePoint(f,hand.from,side),defensePoint(f,hand.to,side),ease(hand.t/3));}
 export function gloveLocal(f,side){
-  const base=restingGlove(f,side),d=f.deflection[side],a=f.attack;
+  const base=restingGlove(f,side),d=f.deflection[side],a=f.attack,p=f.parry[side];
   if(d){
     const sign=side==='L'?1:-1,peak=[sign*.62,clamp(d.from[1]-.18,1.06,1.42),-.02],out=.65;
     if(d.t<out)return mix(d.from,peak,ease(d.t/out));
     return mix(peak,[base[0]+slipOffset(f)*.6,base[1],base[2]],ease((d.t-out)/(d.duration-out)));
+  }
+  if(p){
+    const sign=side==='L'?1:-1,depth=stanceRole(f,side)==='lead'?.12:-.08,offset=slipOffset(f)*.6;
+    const inner=[sign*-.09+offset,1.60,.42+depth],outer=[sign*.44+offset,1.60,.42+depth];
+    if(p.t<PARRY.prepare)return mix(p.from,inner,ease(p.t/PARRY.prepare));
+    if(p.t<PARRY.prepare+PARRY.sweep)return mix(inner,outer,ease((p.t-PARRY.prepare)/PARRY.sweep));
+    return mix(outer,[base[0]+offset,base[1],base[2]],ease((p.t-PARRY.prepare-PARRY.sweep)/PARRY.recover));
   }
   if(!a||MOVES[a.id].side!==side)return [base[0]+slipOffset(f)*.6,base[1],base[2]];
   const m=MOVES[a.id],sign=side==='L'?1:-1;
@@ -128,16 +153,17 @@ export function gloveLocal(f,side){
   const windRatio=a.t/a.wind, cueRatio=m.cue/m.wind;
   if(windRatio<cueRatio)return mix(base,chamber,ease(windRatio/cueRatio));
   const u=ease((windRatio-cueRatio)/(1-cueRatio));
-  const p=mix(chamber,end,u);
-  if(m.kind==='hook'){p[0]+=sign*.18*Math.sin(Math.PI*u);p[2]+=.12*Math.sin(Math.PI*u);}
-  if(m.kind==='upper')p[1]-=.16*Math.sin(Math.PI*u);
-  return p;
+  const position=mix(chamber,end,u);
+  if(m.kind==='hook'){position[0]+=sign*.18*Math.sin(Math.PI*u);position[2]+=.12*Math.sin(Math.PI*u);}
+  if(m.kind==='upper')position[1]-=.16*Math.sin(Math.PI*u);
+  return position;
 }
 export function localToWorld(f,p){return [p[0]*f.face,p[1],f.z+p[2]*f.face];}
 export function bodyTarget(f,target){return localToWorld(f,[slipOffset(f),target==='head'?1.64:1.12,.10]);}
 function deflectHand(f,side,duration){
   const from=gloveLocal(f,side).slice();
   f.deflection[side]={t:0,duration,from};
+  f.parry[side]=null;
   if(f.attack&&MOVES[f.attack.id].side===side)f.attack=null;
   if(f.queue&&MOVES[f.queue.id].side===side)f.queue=null;
   f.stats.deflected++;
@@ -145,6 +171,21 @@ function deflectHand(f,side,duration){
 function activePunch(f){
   const a=f.attack,m=a?MOVES[a.id]:null;
   return a&&!a.feint&&!a.hit&&a.t>=m.cue*(a.wind/m.wind)?{a,m}:null;
+}
+function resolveParries(s){
+  const hits=[];
+  for(const f of s.fighters){
+    const punch=activePunch(f);if(!punch||punch.a.target!=='head'||punch.m.kind!=='straight')continue;
+    const d=s.fighters[1-f.id],side=punch.m.side==='L'?'R':'L',p=parryStatus(d,side);
+    if(!p||p.phase!=='sweep'||p.used||deflectionRemaining(d,side)>0)continue;
+    const incoming=localToWorld(f,gloveLocal(f,punch.m.side)),sweep=localToWorld(d,gloveLocal(d,side));
+    if(Math.hypot(...incoming.map((v,i)=>v-sweep[i]))>PARRY.contactDistance)continue;
+    hits.push({who:f.id,move:punch.a.id,target:'head',type:'block',defense:'parry',damage:0,deflectSide:punch.m.side,parrySide:side,
+      reason:(side==='L'?'左手':'右手')+'のパーリングで'+p.direction+'へ外し、攻撃側の'+(punch.m.side==='L'?'左腕':'右腕')+'を弾いた'});
+  }
+  // Both fighters' contacts are sampled before either arm is displaced.
+  for(const h of hits)s.fighters[1-h.who].parry[h.parrySide].used=true;
+  applyContacts(s,hits);
 }
 function resolvePunchClash(s){
   const left=activePunch(s.fighters[0]),right=activePunch(s.fighters[1]);
@@ -172,15 +213,16 @@ function contact(s,who){
   const required=m.side==='L'?'R':'L',mode=currentDefense(dF,required),hand=dF.defense[required];
   const handBusy=dF.attack&&MOVES[dF.attack.id].side===required,handDeflected=deflectionRemaining(dF,required)>0;
   const ready=dF.stamina>=3&&!handBusy&&!handDeflected;
-  const covers=ready&&(a.target==='body'?mode==='body':mode==='block'||(mode==='parry'&&m.kind==='straight'));
+  const covers=ready&&(a.target==='body'?mode==='body':mode==='block');
   const handName=required==='L'?'左手':'右手';
   if(covers){
-    const damage=mode==='block'?1:0,drain=mode==='parry'?3:mode==='block'?7:5;
-    const reason=mode==='parry'?handName+'のパーリングで外し、攻撃側の'+(m.side==='L'?'左腕':'右腕')+'を弾いた':mode==='block'?handName+'のブロッキングで受けた':handName+'のお腹ブロッキングで受けた';
-    return {who,move:a.id,target:a.target,type:'block',damage,drain,reason,deflectSide:mode==='parry'?m.side:null};
+    const damage=mode==='block'?1:0,drain=mode==='block'?7:5;
+    const reason=mode==='block'?handName+'のブロッキングで受けた':handName+'のお腹ブロッキングで受けた';
+    return {who,move:a.id,target:a.target,type:'block',damage,drain,reason};
   }
   const damage=m.damage*(a.target==='body'?.85:1)*(aF.stamina<8?.85:1);
-  const reason=handBusy?'打った手が戻っていない':handDeflected?'必要な腕が弾かれている':hand.t<3?'必要な手を移している途中':mode==='parry'?'パーリングの外を通った':mode==='block'&&a.target==='body'?'顔のブロッキングの下を通った':mode==='body'&&a.target==='head'?'お腹ブロッキングの上を通った':'守りの外へ届いた';
+  const parry=parryStatus(dF,required);
+  const reason=handBusy?'打った手が戻っていない':handDeflected?'必要な腕が弾かれている':parry?.phase==='prepare'?'パーリングの準備が間に合わなかった':parry?.phase==='return'?'パーリングから戻っている途中':parry?'パーリングの外を通った':hand.t<3?'必要な手を移している途中':mode==='block'&&a.target==='body'?'顔のブロッキングの下を通った':mode==='body'&&a.target==='head'?'お腹ブロッキングの上を通った':'守りの外へ届いた';
   return {who,move:a.id,target:a.target,type:'hit',damage:Math.round(damage),drain:a.target==='body'?8:2,reason};
 }
 function applyContacts(s,hits){
@@ -196,7 +238,7 @@ function applyContacts(s,hits){
 export function observeOpponent(s,who){
   const f=s.fighters[1-who],a=f.attack,m=a?MOVES[a.id]:null;
   const exposed=a&&!a.feint&&a.t>=m.cue*(a.wind/m.wind);
-  return {time:s.time,distance:distance(s),defense:{L:currentDefense(f,'L'),R:currentDefense(f,'R')},deflection:{L:deflectionRemaining(f,'L'),R:deflectionRemaining(f,'R')},moving:!!f.movement,slipping:!!f.slip,
+  return {time:s.time,distance:distance(s),defense:{L:currentDefense(f,'L'),R:currentDefense(f,'R')},parry:{L:parryStatus(f,'L')?.phase||null,R:parryStatus(f,'R')?.phase||null},deflection:{L:deflectionRemaining(f,'L'),R:deflectionRemaining(f,'R')},moving:!!f.movement,slipping:!!f.slip,
     action:a?{phase:a.feint?'return':a.t<a.wind?'windup':'return',side:m.side,kind:exposed?m.kind:null,target:exposed?a.target:null,serial:a.serial}:null};
 }
 function random(s){s.seed=(Math.imul(s.seed,1664525)+1013904223)>>>0;return s.seed/4294967296;}
@@ -208,10 +250,16 @@ function cpu(s){
   if(observation)ai.latest=observation;
   if(observation&&s.mode==='spar'){
     const a=observation.action;
-    if(a&&a.phase==='windup'&&a.kind&&a.serial!==ai.lastReacted){
-      ai.lastReacted=a.serial;
+    if(a&&a.phase==='windup'&&a.serial!==ai.lastReacted){
       const side=a.side==='L'?'R':'L';
-      if(random(s)<.75)requestDefense(s,1,side,a.target==='body'?'body':a.kind==='straight'?'parry':'block');
+      if(!a.kind&&a.serial!==ai.lastPredicted){
+        ai.lastPredicted=a.serial;
+        // Predict from a visible starting arm, before the path/target is known.
+        if(random(s)<.4&&requestDefense(s,1,side,'parry').ok)ai.lastReacted=a.serial;
+      }else if(a.kind){
+        ai.lastReacted=a.serial;
+        if(random(s)<.75)requestDefense(s,1,side,a.target==='body'?'body':'block');
+      }
     }
   }
   if(f.attack&&ai.feintAt!==null&&f.attack.serial===ai.feintSerial&&f.attack.t>=ai.feintAt){requestFeint(s,1);ai.feintAt=null;}
@@ -242,8 +290,9 @@ export function tick(s,dt=STEP,{cpuEnabled=true}={}){
   for(const f of s.fighters){
     for(const side of ['L','R'])f.defense[side].t=Math.min(3,f.defense[side].t+dt);
     for(const side of ['L','R']){const d=f.deflection[side];if(d){d.t+=dt;if(d.t>=d.duration)f.deflection[side]=null;}}
+    for(const side of ['L','R']){const p=f.parry[side];if(p){p.t+=dt;if(p.t>=PARRY.prepare+PARRY.sweep+PARRY.recover)f.parry[side]=null;}}
     f.hitFlash=Math.max(0,f.hitFlash-dt*1.7);f.blockedFlash=Math.max(0,f.blockedFlash-dt*1.7);
-    const regen=f.attack ? .24 : 2;
+    const regen=f.attack||f.parry.L||f.parry.R ? .24 : 2;
     f.stamina=Math.min(100,f.stamina+regen*dt);
     if(f.slip){f.slip.t+=dt;if(f.slip.t>=f.slip.duration)f.slip=null;}
     if(f.movement){const m=f.movement;m.t+=dt;f.z=lerp(m.from,m.to,ease(m.t/m.duration));if(m.t>=m.duration)f.movement=null;}
@@ -251,7 +300,7 @@ export function tick(s,dt=STEP,{cpuEnabled=true}={}){
   }
   const [p,o]=s.fighters;
   if(p.z-o.z<.72){const middle=(p.z+o.z)/2;p.z=middle+.36;o.z=middle-.36;p.movement=null;o.movement=null;}
-  resolvePunchClash(s);
+  resolveParries(s);resolvePunchClash(s);
   for(const f of s.fighters){const a=f.attack;if(a&&!a.feint&&!a.hit&&a.t>=a.wind){a.t=a.wind;a.hit=true;contacts.push(f.id);}}
   applyContacts(s,contacts.map(who=>contact(s,who)));
   if(p.hp<=0||o.hp<=0||s.time>=s.duration){
