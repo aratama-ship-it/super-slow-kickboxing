@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createMatch,startMatch,pauseMatch,tick,STEP,STANCES,MOVES,ARM_DEFLECT_TU,PARRY,JAB_LEAD_FOOT,CPU_REACTION_DELAY,stanceRole,stanceAngles,restingGlove,gloveLocal,leadFootMotion,parryStatus,currentDefense,deflectionRemaining,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,observeOpponent,distance} from './core.mjs';
+import {createMatch,startMatch,pauseMatch,tick,STEP,STANCES,MOVES,ARM_DEFLECT_TU,PARRY,GUARD_IDLE,JAB_LEAD_FOOT,CPU_REACTION_DELAY,stanceRole,stanceAngles,restingGlove,gloveLocal,visualGloveLocal,punchTravelProgress,leadFootMotion,parryStatus,currentDefense,deflectionRemaining,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,observeOpponent,distance} from './core.mjs';
 const run=(s,t,cpuEnabled=false)=>{for(let i=0;i<Math.round(t/STEP);i++)tick(s,STEP,{cpuEnabled});};
 const match=options=>{const s=createMatch(options);startMatch(s);return s;};
 const defend=(f,side,mode)=>{f.defense[side]={from:mode,to:mode,t:3};};
@@ -12,6 +12,37 @@ test('Orthodox stance keeps the left hand forward and the right hand rear in eve
     assert.equal(Math.abs(stanceAngles(f).bodyYaw),Math.PI/4);assert.equal(Math.abs(stanceAngles(f).feetYaw),Math.PI/4);
     for(const mode of ['block','body']){defend(f,'L',mode);defend(f,'R',mode);assert.ok(restingGlove(f,'L')[2]>restingGlove(f,'R')[2],mode+' defense must keep the left glove forward');}
   }
+});
+test('Both guard hands keep a small irregular visual motion without changing collision poses',()=>{
+  const s=match(),f=s.fighters[1],mechanical={L:gloveLocal(f,'L'),R:gloveLocal(f,'R')},samples={L:[],R:[]};
+  for(let i=0;i<180;i++){
+    tick(s,STEP,{cpuEnabled:false});
+    for(const side of ['L','R'])samples[side].push(visualGloveLocal(f,side,s.time));
+  }
+  for(const side of ['L','R']){
+    assert.deepEqual(gloveLocal(f,side),mechanical[side]);
+    assert.deepEqual(visualGloveLocal(f,side,s.time,{idle:false}),mechanical[side]);
+    for(let axis=0;axis<3;axis++){
+      const values=samples[side].map(p=>p[axis]),range=Math.max(...values)-Math.min(...values),limit=[GUARD_IDLE.x,GUARD_IDLE.y,GUARD_IDLE.z][axis]*2+.0001;
+      assert.ok(range>.01,`${side} axis ${axis} should keep moving`);assert.ok(range<=limit,`${side} axis ${axis} should stay small`);
+    }
+  }
+  assert.notDeepEqual(samples.L[60],samples.R[60]);
+});
+test('A jab keeps the idle hand motion before its cue, then starts the glove and lead foot on the same tick',()=>{
+  const s=match(),f=s.fighters[0];requestAttack(s,0,'jab');
+  const base=gloveLocal(f,'L'),visualSamples=[];let handStartAt=null,footStartAt=null,lastVisual=null,launchVisual=null;
+  for(let i=0;i<Math.ceil((MOVES.jab.cue+.2)/STEP);i++){
+    tick(s,STEP,{cpuEnabled:false});
+    const visual=visualGloveLocal(f,'L',s.time),progress=punchTravelProgress(f),foot=leadFootMotion(f);
+    if(progress===0){visualSamples.push(visual);assert.deepEqual(gloveLocal(f,'L'),base);lastVisual=visual;}
+    if(progress>0&&handStartAt===null){handStartAt=s.time;launchVisual=visual;}
+    if(foot.forward>0&&footStartAt===null)footStartAt=s.time;
+  }
+  const drift=Math.max(...visualSamples.map(p=>p[1]))-Math.min(...visualSamples.map(p=>p[1]));
+  assert.ok(drift>.02);assert.equal(handStartAt,footStartAt);assert.ok(handStartAt>=MOVES.jab.cue&&handStartAt<MOVES.jab.cue+STEP*1.1);
+  assert.ok(gloveLocal(f,'L')[2]>base[2]);assert.ok(leadFootMotion(f).forward>0);
+  assert.ok(Math.hypot(...launchVisual.map((v,i)=>v-lastVisual[i]))<.03);
 });
 test('A jab advances and lifts the lead foot with the glove, then returns it to stance',()=>{
   const s=match();requestAttack(s,0,'jab');run(s,3.3);

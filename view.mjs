@@ -1,10 +1,11 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,gloveLocal,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,parryStatus,clamp} from './core.mjs?v=0.15';
+import {MOVES,visualGloveLocal,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,parryStatus,clamp} from './core.mjs?v=0.16';
 
 export function createView(container){
   const scene=new THREE.Scene();scene.background=new THREE.Color('#172a2c');scene.fog=new THREE.Fog('#172a2c',5,16);
   const camera=new THREE.PerspectiveCamera(78,1,.04,40);
   const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
+  const idleHands=!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
   renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;
   renderer.domElement.setAttribute('aria-label','一人称のボクシング。赤い自分のグローブと、青いグローブの相手を表示');
@@ -91,7 +92,7 @@ export function createView(container){
         leg.hem.position.set(hip[0],.78,hip[2]);leg.hem.rotation.y=angles.bodyYaw;
       }
       for(const side of ['L','R']){
-        const sign=side==='L'?1:-1,hand=gloveLocal(f,side),[shoulderX,shoulderZ]=rotateXZ(sign*.3,0,angles.bodyYaw);
+        const sign=side==='L'?1:-1,hand=visualGloveLocal(f,side,s.time,{idle:idleHands}),[shoulderX,shoulderZ]=rotateXZ(sign*.3,0,angles.bodyYaw);
         const shoulder=[shoulderX+headX*.3,1.39,drive+shoulderZ];
         a.shoulders[side].position.set(...shoulder);
         const active=attack&&m.side===side;

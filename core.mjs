@@ -22,11 +22,14 @@ export const PARRY=Object.freeze({
   lift:.055,tapBelowGuard:.025,prepareForward:.08,tapForward:.10,
   deflectPeak:.45,deflectDrop:.18,deflectForward:.14,
 });
+export const GUARD_IDLE=Object.freeze({x:.012,y:.018,z:.014,periods:Object.freeze({x:Object.freeze([1.9,.83]),y:Object.freeze([1.5,.71]),z:Object.freeze([2.1,.97])})});
 export const JAB_LEAD_FOOT=Object.freeze({forward:.10,lift:.018,kneeForwardRatio:.45,deflectReturn:1.1});
 export const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
 const lerp=(a,b,t)=>a+(b-a)*t;
 const ease=t=>{t=clamp(t,0,1);return t*t*(3-2*t);};
 const mix=(a,b,t)=>a.map((v,i)=>lerp(v,b[i],t));
+const TAU=Math.PI*2;
+const pairedWave=(t,periods,phase)=>.64*Math.sin(TAU*t/periods[0]+phase)+.36*Math.sin(TAU*t/periods[1]+phase*1.7+.8);
 const defense=mode=>({from:mode,to:mode,t:3});
 function fighter(id){return {id,stance:'orthodox',z:id===0?.65:-.65,face:id===0?-1:1,hp:100,stamina:100,defense:{L:defense('block'),R:defense('block')},parry:{L:null,R:null},deflection:{L:null,R:null},attack:null,queue:null,movement:null,slip:null,hitFlash:0,blockedFlash:0,stats:{hits:0,blocks:0,misses:0,feints:0,clashes:0,deflected:0,damage:0},lastReason:''};}
 export function createMatch({seed=1729,mode='spar',duration=180}={}){
@@ -81,8 +84,8 @@ export function requestDefense(s,who,side,mode){
   if(mode==='parry'){
     if(f.attack&&MOVES[f.attack.id].side===side)return result(f,false,'打っている手が戻ってからパーリングできます');
     if(f.stamina<PARRY.cost)return result(f,false,'スタミナを回復してからパーリングできます');
-    const from=gloveLocal(f,side).slice();
-    f.parry[side]={t:0,from,used:false};f.stamina-=PARRY.cost;
+    const from=gloveLocal(f,side).slice(),visual=visualGloveLocal(f,side,s.time);
+    f.parry[side]={t:0,from,used:false,visualOffset:visual.map((v,i)=>v-from[i])};f.stamina-=PARRY.cost;
     if(f.queue&&MOVES[f.queue.id].side===side)f.queue=null;
     return result(f,true,name+'：手を少し上げ、上から小さく叩きます');
   }
@@ -95,7 +98,8 @@ export function requestFeint(s,who){
   if(!a){if(f.queue){f.queue=null;return result(f,true,'予約を取り消しました');}return result(f,false,'打ち始めてから「引く」を選びます');}
   const m=MOVES[a.id];
   if(a.feint||a.t>=m.cancel*(a.wind/m.wind)||a.hit)return result(f,false,'引ける区間を過ぎています');
-  a.cancelPose=gloveLocal(f,m.side);a.cancelFoot=a.id==='jab'?leadFootMotion(f):null;a.feint=true;a.feintStart=a.t;a.feintDuration=1.8;
+  const cancelPose=gloveLocal(f,m.side),cancelVisual=visualGloveLocal(f,m.side,s.time);
+  a.cancelPose=cancelPose;a.cancelVisualOffset=cancelVisual.map((v,i)=>v-cancelPose[i]);a.cancelFoot=a.id==='jab'?leadFootMotion(f):null;a.feint=true;a.feintStart=a.t;a.feintDuration=1.8;
   f.queue=null;f.stamina=Math.max(0,f.stamina-3);f.stats.feints++;
   return result(f,true,'攻撃を引いて構えへ戻ります');
 }
@@ -135,6 +139,14 @@ const defensePoint=(f,mode,side)=>{
   return [sign*.32,1.24,.08+depth];
 };
 export function restingGlove(f,side){const hand=f.defense[side];return mix(defensePoint(f,hand.from,side),defensePoint(f,hand.to,side),ease(hand.t/3));}
+export function guardIdleOffset(f,side,time){
+  const t=Number.isFinite(time)?time:0,phase=f.id*1.73+(side==='L'?0:.91);
+  return [
+    GUARD_IDLE.x*pairedWave(t,GUARD_IDLE.periods.x,phase),
+    GUARD_IDLE.y*pairedWave(t,GUARD_IDLE.periods.y,phase+1.2),
+    GUARD_IDLE.z*pairedWave(t,GUARD_IDLE.periods.z,phase+2.1),
+  ];
+}
 export function gloveLocal(f,side){
   const base=restingGlove(f,side),d=f.deflection[side],a=f.attack,p=f.parry[side];
   if(d){
@@ -164,6 +176,10 @@ export function gloveLocal(f,side){
   const chamber=m.kind==='hook'?[sign*.53,targetY-.07,lead?.28:.10]:m.kind==='upper'?[sign*.25,1.03,lead?.27:.13]:[sign*.22,1.46,lead?.35:.13];
   if(a.t>=a.wind)return mix(end,base,ease((a.t-a.wind)/a.recover));
   const windRatio=a.t/a.wind, cueRatio=m.cue/m.wind;
+  if(a.id==='jab'){
+    if(windRatio<cueRatio)return [base[0]+slipOffset(f)*.6,base[1],base[2]];
+    return mix(base,end,punchTravelProgress(f));
+  }
   if(windRatio<cueRatio)return mix(base,chamber,ease(windRatio/cueRatio));
   const u=ease((windRatio-cueRatio)/(1-cueRatio));
   const position=mix(chamber,end,u);
@@ -171,12 +187,40 @@ export function gloveLocal(f,side){
   if(m.kind==='upper')position[1]-=.16*Math.sin(Math.PI*u);
   return position;
 }
+export function visualGloveLocal(f,side,time,{idle=true}={}){
+  const pose=gloveLocal(f,side);
+  if(!idle)return pose;
+  const d=f.deflection[side],p=f.parry[side],a=f.attack,m=a?MOVES[a.id]:null,active=a&&m.side===side;
+  if(d){
+    const u=ease(d.t/Math.min(.25,d.duration)),offset=d.visualOffset||[0,0,0];
+    return pose.map((v,i)=>v+offset[i]*(1-u));
+  }
+  if(p){
+    const u=ease(p.t/PARRY.prepare),offset=p.visualOffset||[0,0,0];
+    return pose.map((v,i)=>v+offset[i]*(1-u));
+  }
+  if(active){
+    if(a.feint){
+      const u=ease((a.t-a.feintStart)/a.feintDuration),offset=a.cancelVisualOffset||[0,0,0];
+      return pose.map((v,i)=>v+offset[i]*(1-u));
+    }
+    if(a.id==='jab'){
+      const cue=m.cue*(a.wind/m.wind);
+      if(a.t<cue){const offset=guardIdleOffset(f,side,time);return pose.map((v,i)=>v+offset[i]);}
+      const u=punchTravelProgress(f),cueTime=time-(a.t-cue),offset=guardIdleOffset(f,side,cueTime);
+      return pose.map((v,i)=>v+offset[i]*(1-u));
+    }
+    return pose;
+  }
+  const offset=guardIdleOffset(f,side,time);
+  return pose.map((v,i)=>v+offset[i]);
+}
 export function localToWorld(f,p){return [p[0]*f.face,p[1],f.z+p[2]*f.face];}
 export function bodyTarget(f,target){return localToWorld(f,[slipOffset(f),target==='head'?1.64:1.12,.10]);}
-function deflectHand(f,side,duration,trajectory='outward'){
-  const from=gloveLocal(f,side).slice();
+function deflectHand(f,side,duration,trajectory='outward',time=0){
+  const from=gloveLocal(f,side).slice(),visual=visualGloveLocal(f,side,time);
   const jabFoot=f.attack?.id==='jab'?leadFootMotion(f):null;
-  f.deflection[side]={t:0,duration,from,trajectory,jabFoot};
+  f.deflection[side]={t:0,duration,from,trajectory,jabFoot,visualOffset:visual.map((v,i)=>v-from[i])};
   f.parry[side]=null;
   if(f.attack&&MOVES[f.attack.id].side===side)f.attack=null;
   if(f.queue&&MOVES[f.queue.id].side===side)f.queue=null;
@@ -202,7 +246,7 @@ export function leadFootMotion(f){
     const m=MOVES.jab,cue=m.cue*(a.wind/m.wind);
     if(a.t<cue)return {forward:0,lift:0,phase:'ready'};
     if(a.t<a.wind){
-      const u=ease((a.t-cue)/(a.wind-cue));
+      const u=punchTravelProgress(f);
       return {forward:JAB_LEAD_FOOT.forward*u,lift:JAB_LEAD_FOOT.lift*Math.sin(Math.PI*u),phase:'advance'};
     }
     const u=ease((a.t-a.wind)/a.recover);
@@ -241,13 +285,13 @@ function resolvePunchClash(s){
   if(Math.hypot(p0[0]-p1[0],p0[1]-p1[1],p0[2]-p1[2])>PUNCH_CLASH_DISTANCE)return false;
   const move0=left.a.id,move1=right.a.id;
   if(left.m.force===right.m.force){
-    deflectHand(s.fighters[0],left.m.side,EQUAL_CLASH_DEFLECT_TU);deflectHand(s.fighters[1],right.m.side,EQUAL_CLASH_DEFLECT_TU);
+    deflectHand(s.fighters[0],left.m.side,EQUAL_CLASH_DEFLECT_TU,'outward',s.time);deflectHand(s.fighters[1],right.m.side,EQUAL_CLASH_DEFLECT_TU,'outward',s.time);
     s.fighters[0].stats.clashes++;s.fighters[1].stats.clashes++;
     event(s,{type:'clash',who:null,move:move0,otherMove:move1,damage:0,reason:'同じ力でぶつかり、両方の腕が弾かれた'});return true;
   }
   const winner=left.m.force>right.m.force?0:1,loser=1-winner;
   const winning=winner===0?left:right,losing=loser===0?left:right;
-  deflectHand(s.fighters[loser],losing.m.side,ARM_DEFLECT_TU);s.fighters[winner].stats.clashes++;
+  deflectHand(s.fighters[loser],losing.m.side,ARM_DEFLECT_TU,'outward',s.time);s.fighters[winner].stats.clashes++;
   event(s,{type:'clash',who:winner,loser,move:winning.a.id,otherMove:losing.a.id,damage:0,reason:(losing.m.side==='L'?'左腕':'右腕')+'が弾かれ、4 TU攻撃・防御不可'});return true;
 }
 function contact(s,who){
@@ -278,7 +322,7 @@ function applyContacts(s,hits){
     if(h.type==='hit'){f.stats.hits++;d.hitFlash=1;}
     else if(h.type==='block'){d.stats.blocks++;d.blockedFlash=1;}
     else f.stats.misses++;
-    f.stats.damage+=h.damage;event(s,h);if(h.deflectSide)deflectHand(f,h.deflectSide,ARM_DEFLECT_TU,h.deflectTrajectory);
+    f.stats.damage+=h.damage;event(s,h);if(h.deflectSide)deflectHand(f,h.deflectSide,ARM_DEFLECT_TU,h.deflectTrajectory,s.time);
   }
 }
 export function observeOpponent(s,who){
