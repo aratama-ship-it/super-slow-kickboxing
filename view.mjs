@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,visualGloveLocal,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,parryStatus,clamp} from './core.mjs?v=0.18';
+import {MOVES,visualGloveLocal,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,parryStatus,clamp} from './core.mjs?v=0.19';
 
 export function createView(container){
   const scene=new THREE.Scene();scene.background=new THREE.Color('#172a2c');scene.fog=new THREE.Fog('#172a2c',5,16);
@@ -109,7 +109,15 @@ export function createView(container){
     camera.lookAt(0,1.35,o.z);
     renderer.render(scene,camera);
   }
+  function gloveScreenPosition(index,side){
+    const glove=actors[index]?.gloves[side],rect=renderer.domElement.getBoundingClientRect();
+    if(!glove||!rect.width||!rect.height)return null;
+    const point=glove.getWorldPosition(new THREE.Vector3());
+    point.y+=.16;
+    point.project(camera);
+    return {x:(point.x+1)*rect.width*.5,y:(1-point.y)*rect.height*.5,visible:point.z>=-1&&point.z<=1};
+  }
   const observer=new ResizeObserver(()=>{const {width,height}=container.getBoundingClientRect();if(width&&height){camera.aspect=width/height;camera.updateProjectionMatrix();renderer.setSize(width,height,false);if(lastState)render(lastState);}});
   observer.observe(container);
-  return {render,canvas:renderer.domElement,dispose(){observer.disconnect();renderer.dispose();scene.traverse(o=>{o.geometry?.dispose();if(o.material){if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material.dispose();}});}};
+  return {render,gloveScreenPosition,canvas:renderer.domElement,dispose(){observer.disconnect();renderer.dispose();scene.traverse(o=>{o.geometry?.dispose();if(o.material){if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material.dispose();}});}};
 }

@@ -1,11 +1,11 @@
-import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.18';
-import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.18';
-import {LAB_CASES,createLabRun,advanceLabRun,labProgress} from './scenario-lab.mjs?v=0.18';
+import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.19';
+import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.19';
+import {LAB_CASES,createLabRun,advanceLabRun,labProgress} from './scenario-lab.mjs?v=0.19';
 const $=id=>document.getElementById(id);
 let state=createMatch(),target='head',view=null,lastFrame=0,accumulator=0,lastUi=-1,lastEvent=0,dirty=true;
 let pauseReason='再開すると、同じ姿勢から続きます。';
 const PARRY_EFFECT_DURATION_MS=720;
-let parryEffectTimer=null;
+let parryEffectTimer=null,parryEffectTarget=null;
 const KEY_STORAGE='super-slow-boxing.keymap.v2';
 const LAB_VERDICT_STORAGE='super-slow-boxing.lab-verdicts.v7';
 let keyMap=loadSavedKeys(),listeningAction=null;
@@ -14,13 +14,24 @@ const actionButtons=[...document.querySelectorAll('[data-attack],[data-defense],
 function applyResult(r){$('input-feedback').textContent=r.message;dirty=true;updateUI();}
 function hideParryEffect(){
   if(parryEffectTimer!==null){clearTimeout(parryEffectTimer);parryEffectTimer=null;}
-  const effect=$('parry-effect');effect.hidden=true;effect.classList.remove('is-active');effect.textContent='';
+  parryEffectTarget=null;
+  const effect=$('parry-effect');effect.hidden=true;effect.classList.remove('is-active');effect.textContent='';effect.removeAttribute('data-fighter');effect.removeAttribute('data-side');effect.style.removeProperty('left');effect.style.removeProperty('top');
 }
-function showParryEffect(){
+function positionParryEffect(){
+  const effect=$('parry-effect');
+  if(effect.hidden||!parryEffectTarget||!view?.gloveScreenPosition)return;
+  const anchor=view.gloveScreenPosition(parryEffectTarget.fighter,parryEffectTarget.side);
+  if(!anchor?.visible)return;
+  const stage=$('stage'),padding=4,half=effect.offsetWidth*.5;
+  effect.style.left=Math.max(half+padding,Math.min(anchor.x,stage.clientWidth-half-padding))+'px';
+  effect.style.top=Math.max(effect.offsetHeight+padding,Math.min(anchor.y,stage.clientHeight-padding))+'px';
+}
+function showParryEffect(event){
   hideParryEffect();
-  const effect=$('parry-effect');effect.hidden=false;effect.textContent='PARRY';
+  parryEffectTarget={fighter:1-event.who,side:event.parrySide};
+  const effect=$('parry-effect');effect.dataset.fighter=parryEffectTarget.fighter===0?'self':'opponent';effect.dataset.side=parryEffectTarget.side;effect.hidden=false;effect.textContent='PARRY';positionParryEffect();
   void effect.offsetWidth;effect.classList.add('is-active');
-  parryEffectTimer=setTimeout(()=>{effect.hidden=true;effect.classList.remove('is-active');effect.textContent='';parryEffectTimer=null;},PARRY_EFFECT_DURATION_MS);
+  parryEffectTimer=setTimeout(()=>{parryEffectTimer=null;hideParryEffect();},PARRY_EFFECT_DURATION_MS);
 }
 function loadSavedKeys(){
   try{return normalizeKeymap(localStorage.getItem(KEY_STORAGE));}catch{return {...DEFAULT_KEYMAP};}
@@ -216,7 +227,8 @@ function updateUI(){
   $('pause').disabled=!['running','paused'].includes(state.phase)||(isLabMode()&&labRun?.status==='complete');$('pause').firstChild.textContent=state.phase==='paused'?'再開 ':'一時停止 ';
   const unseenEvents=state.events.filter(event=>event.id>lastEvent),newest=unseenEvents.at(-1);
   if(newest){
-    if(unseenEvents.some(event=>event.type==='block'&&event.defense==='parry'&&event.who===1))showParryEffect();
+    const parryEvent=unseenEvents.find(event=>event.type==='block'&&event.defense==='parry'&&event.who===1);
+    if(parryEvent)showParryEffect(parryEvent);
     lastEvent=newest.id;
     if(newest.type==='clash'){
       if(newest.who===null)$('hit-feedback').textContent=MOVES[newest.move].name+'と'+MOVES[newest.otherMove].name+'：'+newest.reason;
@@ -244,7 +256,7 @@ function updateUI(){
   updateLabUI();
 }
 async function boot(){
-  try{const {createView}=await import('./view.mjs?v=0.18');view=createView($('stage'));view.render(state);updateUI();}
+  try{const {createView}=await import('./view.mjs?v=0.19');view=createView($('stage'));view.render(state);updateUI();}
   catch(error){$('load-error').hidden=false;$('load-error').textContent='3D画面を起動できませんでした。WebGLに対応したブラウザで、このページを開き直してください。';$('start').textContent='3Dの起動に失敗';console.error(error);}
   requestAnimationFrame(frame);
 }
@@ -255,12 +267,12 @@ function frame(now){
     while(accumulator>=STEP){if(isLabMode()&&labRun?.status==='running')advanceLabRun(labRun,STEP);else tick(state,STEP);accumulator-=STEP;}
     dirty=true;
   }
-  if(dirty){if(view)view.render(state);if(now-lastUi>100||state.phase!=='running'){updateUI();lastUi=now;}dirty=false;}
+  if(dirty){if(view)view.render(state);positionParryEffect();if(now-lastUi>100||state.phase!=='running'){updateUI();lastUi=now;}dirty=false;}
   requestAnimationFrame(frame);
 }
 const pageParams=new URLSearchParams(location.search);
 if(pageParams.has('lab'))$('mode').value='lab';
 if(pageParams.has('test')){
-  window.__boxingTest={snapshot:()=>structuredClone(state),keymap:()=>({...keyMap}),target:()=>target,lab:()=>labRun?structuredClone({caseIndex:labRun.caseIndex,status:labRun.status,defenseIssuedAt:labRun.defenseIssuedAt,parryStart:labRun.parryStart,tapStart:labRun.tapStart,preCueMotion:labRun.preCueMotion,punchStartAt:labRun.punchStartAt,leadFootStartAt:labRun.leadFootStartAt,leadFootPeak:labRun.leadFootPeak,impact:labRun.impact,rebound:labRun.rebound,checks:labRun.checks}):null,advance(t,cpuEnabled=false){for(let n=0;n<Math.round(t/STEP);n++){if(isLabMode()&&labRun?.status==='running')advanceLabRun(labRun,STEP);else tick(state,STEP,{cpuEnabled});}updateUI();if(view)view.render(state);},reset(options){labRun=null;state=createMatch(options);lastEvent=0;updateUI();if(view)view.render(state);},ready:()=>!!view};
+  window.__boxingTest={snapshot:()=>structuredClone(state),keymap:()=>({...keyMap}),target:()=>target,lab:()=>labRun?structuredClone({caseIndex:labRun.caseIndex,status:labRun.status,defenseIssuedAt:labRun.defenseIssuedAt,parryStart:labRun.parryStart,tapStart:labRun.tapStart,preCueMotion:labRun.preCueMotion,punchStartAt:labRun.punchStartAt,leadFootStartAt:labRun.leadFootStartAt,leadFootPeak:labRun.leadFootPeak,impact:labRun.impact,rebound:labRun.rebound,checks:labRun.checks}):null,parryEffect:()=>parryEffectTarget&&view?{...parryEffectTarget,anchor:view.gloveScreenPosition(parryEffectTarget.fighter,parryEffectTarget.side)}:null,advance(t,cpuEnabled=false){for(let n=0;n<Math.round(t/STEP);n++){if(isLabMode()&&labRun?.status==='running')advanceLabRun(labRun,STEP);else tick(state,STEP,{cpuEnabled});}if(view)view.render(state);updateUI();positionParryEffect();},reset(options){labRun=null;state=createMatch(options);lastEvent=0;if(view)view.render(state);updateUI();positionParryEffect();},ready:()=>!!view};
 }
 buildKeySettings();updateUI();boot();
