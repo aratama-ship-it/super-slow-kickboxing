@@ -1,11 +1,11 @@
-import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,GUARDS,distance,currentGuard,requestAttack,requestGuard,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs';
-import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs';
+import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.5';
+import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.5';
 const $=id=>document.getElementById(id);
 let state=createMatch(),target='head',view=null,lastFrame=0,accumulator=0,lastUi=-1,lastEvent=0,dirty=true;
 let pauseReason='再開すると、同じ姿勢から続きます。';
-const KEY_STORAGE='super-slow-boxing.keymap.v1';
+const KEY_STORAGE='super-slow-boxing.keymap.v2';
 let keyMap=loadSavedKeys(),listeningAction=null;
-const actionButtons=[...document.querySelectorAll('[data-attack],[data-guard],[data-step],[data-slip],#feint')];
+const actionButtons=[...document.querySelectorAll('[data-attack],[data-defense],[data-step],[data-slip],#feint')];
 function applyResult(r){$('input-feedback').textContent=r.message;dirty=true;updateUI();}
 function loadSavedKeys(){
   try{return normalizeKeymap(localStorage.getItem(KEY_STORAGE));}catch{return {...DEFAULT_KEYMAP};}
@@ -63,7 +63,7 @@ function restoreDefaultKeys(){
 }
 function runKeyAction(action){
   if(action.kind==='attack')applyResult(requestAttack(state,0,action.value,target));
-  else if(action.kind==='guard')applyResult(requestGuard(state,0,action.value));
+  else if(action.kind==='defense')applyResult(requestDefense(state,0,action.side,action.value));
   else if(action.kind==='step')applyResult(requestStep(state,0,action.value));
   else if(action.kind==='slip')applyResult(requestSlip(state,0,action.value));
   else if(action.kind==='feint')applyResult(requestFeint(state,0));
@@ -91,7 +91,7 @@ function togglePause(){if(state.phase==='running')pause();else if(state.phase===
 function resume(){if(!view)return;startMatch(state);lastFrame=performance.now();accumulator=0;$('input-feedback').textContent='守りを先に置き、相手の動きを見てみてください。';dirty=true;updateUI();}
 function selectTarget(next){target=next;document.querySelectorAll('[data-target]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.target===target)));dirty=true;}
 document.querySelectorAll('[data-attack]').forEach(b=>b.addEventListener('click',()=>applyResult(requestAttack(state,0,b.dataset.attack,target))));
-document.querySelectorAll('[data-guard]').forEach(b=>b.addEventListener('click',()=>applyResult(requestGuard(state,0,b.dataset.guard))));
+document.querySelectorAll('[data-defense]').forEach(b=>b.addEventListener('click',()=>applyResult(requestDefense(state,0,b.dataset.defenseSide,b.dataset.defense))));
 document.querySelectorAll('[data-step]').forEach(b=>b.addEventListener('click',()=>applyResult(requestStep(state,0,b.dataset.step))));
 document.querySelectorAll('[data-slip]').forEach(b=>b.addEventListener('click',()=>applyResult(requestSlip(state,0,b.dataset.slip))));
 document.querySelectorAll('[data-target]').forEach(b=>b.addEventListener('click',()=>selectTarget(b.dataset.target)));
@@ -117,8 +117,9 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden)pause('画�
 window.addEventListener('blur',()=>pause('別のウインドウへ移ったため、一時停止しました。'));
 function handState(f,side){
   if(f.attack&&MOVES[f.attack.id].side===side)return attackStatus(f).name;
-  if(f.guard.t<3)return GUARDS[f.guard.to]+'へ移動中';
-  return GUARDS[currentGuard(f)];
+  const hand=f.defense[side];
+  if(hand.t<3)return DEFENSES[hand.to]+'へ移動中';
+  return DEFENSES[currentDefense(f,side)];
 }
 function updateUI(){
   const [p,cpu]=state.fighters;
@@ -130,7 +131,7 @@ function updateUI(){
   $('left-state').textContent=handState(p,'L');$('right-state').textContent=handState(p,'R');
   $('queue').textContent=p.queue?MOVES[p.queue.id].name+' → '+(p.queue.target==='head'?'頭':'胴'):'予約なし';
   $('clear-queue').disabled=!p.queue||state.phase!=='running';
-  document.querySelectorAll('[data-guard]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.guard===p.guard.to)));
+  document.querySelectorAll('[data-defense]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.defense===p.defense[b.dataset.defenseSide].to)));
   actionButtons.forEach(b=>b.disabled=state.phase!=='running');
   const a=p.attack,m=a?MOVES[a.id]:null;
   $('feint-window').textContent=!a?'打ち始めの区間だけ引き返せます。':a.feint?'引いています。次の技は戻ってから。':a.t<m.cancel*(a.wind/m.wind)?'いまは「引く」を選べます。':'打ち切る区間です。戻りを待ちます。';
@@ -144,7 +145,7 @@ function updateUI(){
   $('overlay').hidden=state.phase==='running';
   if(state.phase==='ready'){
     $('overlay-tag').textContent='まずは、守りを先に置く。';$('overlay-title').textContent='相手の戻りを狙ってみる';
-    $('overlay-description').textContent=$('mode').value==='dummy'?'動かない相手で、パンチの射程とガードを確認できます。画面の相手を見ながら技を選んでください。':'前を守ってジャブに備え、相手が頭を固めたら胴へ。相手が大きく打ち始めたら、空く側を早いパンチで狙ってみます。';
+    $('overlay-description').textContent=$('mode').value==='dummy'?'動かない相手で、パンチの射程と左右の守りを確認できます。画面の相手を見ながら技を選んでください。':'左右の手を先に置いてジャブに備え、相手が顔を固めたら胴へ。相手が片手で打ち始めたら、その手が守れない間を狙ってみます。';
     if(view){$('start').textContent='ラウンドを始める';$('start').disabled=false;}
   }else if(state.phase==='paused'){
     $('overlay-tag').textContent='CPU練習 / 一時停止';$('overlay-title').textContent='ここから考え直せます';$('overlay-description').textContent=pauseReason;$('start').textContent='ラウンドを再開する';
@@ -156,7 +157,7 @@ function updateUI(){
   }
 }
 async function boot(){
-  try{const {createView}=await import('./view.mjs');view=createView($('stage'));view.render(state);updateUI();}
+  try{const {createView}=await import('./view.mjs?v=0.5');view=createView($('stage'));view.render(state);updateUI();}
   catch(error){$('load-error').hidden=false;$('load-error').textContent='3D画面を起動できませんでした。WebGLに対応したブラウザで、このページを開き直してください。';$('start').textContent='3Dの起動に失敗';console.error(error);}
   requestAnimationFrame(frame);
 }

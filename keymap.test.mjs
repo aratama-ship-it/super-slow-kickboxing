@@ -4,8 +4,10 @@ import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssigna
 
 test('Default key assignments are complete, unique and readable',()=>{
   assert.equal(Object.keys(DEFAULT_KEYMAP).length,KEY_BINDINGS.length);
+  assert.equal(KEY_BINDINGS.length,18);
   assert.equal(new Set(Object.values(DEFAULT_KEYMAP)).size,KEY_BINDINGS.length);
   assert.equal(keyLabel(DEFAULT_KEYMAP['attack.jab']),'J');
+  assert.equal(keyLabel(DEFAULT_KEYMAP['defense.R.body']),'6');
   assert.equal(keyLabel(DEFAULT_KEYMAP.pause),'Space');
 });
 

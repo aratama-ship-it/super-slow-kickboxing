@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,gloveLocal,slipOffset,localToWorld,stanceAngles,clamp} from './core.mjs';
+import {MOVES,gloveLocal,slipOffset,localToWorld,stanceAngles,clamp} from './core.mjs?v=0.5';
 
 export function createView(container){
   const scene=new THREE.Scene();scene.background=new THREE.Color('#172a2c');scene.fog=new THREE.Fog('#172a2c',5,16);
