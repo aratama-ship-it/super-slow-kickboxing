@@ -4,8 +4,9 @@ import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssigna
 
 test('Default key assignments are complete, unique and readable',()=>{
   assert.equal(Object.keys(DEFAULT_KEYMAP).length,KEY_BINDINGS.length);
-  assert.equal(KEY_BINDINGS.length,18);
+  assert.equal(KEY_BINDINGS.length,19);
   assert.equal(new Set(Object.values(DEFAULT_KEYMAP)).size,KEY_BINDINGS.length);
+  assert.equal(keyLabel(DEFAULT_KEYMAP['target.toggle']),'左Shift');
   assert.equal(keyLabel(DEFAULT_KEYMAP['attack.jab']),'J');
   assert.equal(keyLabel(DEFAULT_KEYMAP['defense.R.body']),'6');
   assert.equal(keyLabel(DEFAULT_KEYMAP.pause),'Space');
@@ -15,7 +16,18 @@ test('Malformed or duplicate saved assignments safely restore the defaults',()=>
   assert.deepEqual(normalizeKeymap('{broken'),DEFAULT_KEYMAP);
   assert.deepEqual(normalizeKeymap({'attack.jab':'KeyK','attack.cross':'KeyK'}),DEFAULT_KEYMAP);
   assert.equal(isAssignableKey('Escape'),false);
+  assert.equal(isAssignableKey('ShiftLeft'),true);
+  assert.equal(isAssignableKey('ControlLeft'),false);
   assert.equal(isAssignableKey('KeyQ'),true);
+});
+
+test('A saved map from before target switching keeps its custom keys and gains the Shift default',()=>{
+  const legacy={...DEFAULT_KEYMAP};
+  delete legacy['target.toggle'];
+  legacy['attack.jab']='KeyQ';
+  const normalized=normalizeKeymap(legacy);
+  assert.equal(normalized['target.toggle'],'ShiftLeft');
+  assert.equal(normalized['attack.jab'],'KeyQ');
 });
 
 test('Assigning a used key swaps the two actions instead of creating a conflict',()=>{

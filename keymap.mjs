@@ -1,4 +1,5 @@
 export const KEY_BINDINGS=Object.freeze([
+  Object.freeze({id:'target.toggle',label:'頭／胴の狙い切替',group:'狙い',defaultCode:'ShiftLeft',selector:'.target-shortcut',kind:'target'}),
   Object.freeze({id:'attack.jab',label:'左ジャブ',group:'パンチ',defaultCode:'KeyJ',selector:'[data-attack="jab"]',kind:'attack',value:'jab'}),
   Object.freeze({id:'attack.cross',label:'右ストレート',group:'パンチ',defaultCode:'KeyK',selector:'[data-attack="cross"]',kind:'attack',value:'cross'}),
   Object.freeze({id:'attack.hookL',label:'左フック',group:'パンチ',defaultCode:'KeyU',selector:'[data-attack="hookL"]',kind:'attack',value:'hookL'}),
@@ -21,8 +22,8 @@ export const KEY_BINDINGS=Object.freeze([
 
 export const DEFAULT_KEYMAP=Object.freeze(Object.fromEntries(KEY_BINDINGS.map(action=>[action.id,action.defaultCode])));
 const ACTION_IDS=new Set(KEY_BINDINGS.map(action=>action.id));
-const RESERVED_CODES=new Set(['Escape','Tab','ShiftLeft','ShiftRight','ControlLeft','ControlRight','AltLeft','AltRight','MetaLeft','MetaRight','CapsLock','ContextMenu','PrintScreen','BrowserBack','BrowserForward','BrowserRefresh']);
-const LABELS={Space:'Space',Enter:'Enter',Backspace:'Backspace',Delete:'Delete',ArrowUp:'↑',ArrowDown:'↓',ArrowLeft:'←',ArrowRight:'→',Comma:',',Period:'.',Slash:'/',Semicolon:';',Quote:"'",BracketLeft:'[',BracketRight:']',Backslash:'\\',Minus:'-',Equal:'=',Backquote:'`',IntlYen:'¥',IntlRo:'ろ',IntlBackslash:'\\'};
+const RESERVED_CODES=new Set(['Escape','Tab','ControlLeft','ControlRight','AltLeft','AltRight','MetaLeft','MetaRight','CapsLock','ContextMenu','PrintScreen','BrowserBack','BrowserForward','BrowserRefresh']);
+const LABELS={ShiftLeft:'左Shift',ShiftRight:'右Shift',Space:'Space',Enter:'Enter',Backspace:'Backspace',Delete:'Delete',ArrowUp:'↑',ArrowDown:'↓',ArrowLeft:'←',ArrowRight:'→',Comma:',',Period:'.',Slash:'/',Semicolon:';',Quote:"'",BracketLeft:'[',BracketRight:']',Backslash:'\\',Minus:'-',Equal:'=',Backquote:'`',IntlYen:'¥',IntlRo:'ろ',IntlBackslash:'\\'};
 
 export function isAssignableKey(code){
   return typeof code==='string'&&code.length>0&&!RESERVED_CODES.has(code)&&!/^F\d{1,2}$/.test(code);

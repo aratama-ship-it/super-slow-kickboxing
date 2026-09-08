@@ -1,5 +1,5 @@
-import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.7';
-import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.7';
+import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.9';
+import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.9';
 const $=id=>document.getElementById(id);
 let state=createMatch(),target='head',view=null,lastFrame=0,accumulator=0,lastUi=-1,lastEvent=0,dirty=true;
 let pauseReason='再開すると、同じ姿勢から続きます。';
@@ -62,7 +62,8 @@ function restoreDefaultKeys(){
   setKeyStatus(saved?'初期設定へ戻しました。':'初期設定へ戻しました。このタブを閉じるまで有効です。');refreshKeyLabels();
 }
 function runKeyAction(action){
-  if(action.kind==='attack')applyResult(requestAttack(state,0,action.value,target));
+  if(action.kind==='target')selectTarget(target==='head'?'body':'head',true);
+  else if(action.kind==='attack')applyResult(requestAttack(state,0,action.value,target));
   else if(action.kind==='defense')applyResult(requestDefense(state,0,action.side,action.value));
   else if(action.kind==='step')applyResult(requestStep(state,0,action.value));
   else if(action.kind==='slip')applyResult(requestSlip(state,0,action.value));
@@ -89,7 +90,11 @@ function reset(){state=createMatch({mode:$('mode').value,seed:Date.now()>>>0});a
 function pause(reason){if(state.phase==='running'){pauseMatch(state);pauseReason=reason||'再開すると、同じ姿勢から続きます。';accumulator=0;dirty=true;updateUI();}}
 function togglePause(){if(state.phase==='running')pause();else if(state.phase==='paused')resume();}
 function resume(){if(!view)return;startMatch(state);lastFrame=performance.now();accumulator=0;$('input-feedback').textContent='守りを先に置き、相手の動きを見てみてください。';dirty=true;updateUI();}
-function selectTarget(next){target=next;document.querySelectorAll('[data-target]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.target===target)));dirty=true;}
+function selectTarget(next,announce=false){
+  target=next;document.querySelectorAll('[data-target]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.target===target)));
+  if(announce)$('input-feedback').textContent='狙いを'+(target==='head'?'頭':'胴')+'に切り替えました。';
+  dirty=true;updateUI();
+}
 document.querySelectorAll('[data-attack]').forEach(b=>b.addEventListener('click',()=>applyResult(requestAttack(state,0,b.dataset.attack,target))));
 document.querySelectorAll('[data-defense]').forEach(b=>b.addEventListener('click',()=>applyResult(requestDefense(state,0,b.dataset.defenseSide,b.dataset.defense))));
 document.querySelectorAll('[data-step]').forEach(b=>b.addEventListener('click',()=>applyResult(requestStep(state,0,b.dataset.step))));
@@ -169,7 +174,7 @@ function updateUI(){
   }
 }
 async function boot(){
-  try{const {createView}=await import('./view.mjs?v=0.8');view=createView($('stage'));view.render(state);updateUI();}
+  try{const {createView}=await import('./view.mjs?v=0.9');view=createView($('stage'));view.render(state);updateUI();}
   catch(error){$('load-error').hidden=false;$('load-error').textContent='3D画面を起動できませんでした。WebGLに対応したブラウザで、このページを開き直してください。';$('start').textContent='3Dの起動に失敗';console.error(error);}
   requestAnimationFrame(frame);
 }
@@ -184,6 +189,6 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 if(new URLSearchParams(location.search).has('test')){
-  window.__boxingTest={snapshot:()=>structuredClone(state),keymap:()=>({...keyMap}),advance(t,cpuEnabled=false){for(let n=0;n<Math.round(t/STEP);n++)tick(state,STEP,{cpuEnabled});updateUI();if(view)view.render(state);},reset(options){state=createMatch(options);lastEvent=0;updateUI();if(view)view.render(state);},ready:()=>!!view};
+  window.__boxingTest={snapshot:()=>structuredClone(state),keymap:()=>({...keyMap}),target:()=>target,advance(t,cpuEnabled=false){for(let n=0;n<Math.round(t/STEP);n++)tick(state,STEP,{cpuEnabled});updateUI();if(view)view.render(state);},reset(options){state=createMatch(options);lastEvent=0;updateUI();if(view)view.render(state);},ready:()=>!!view};
 }
 buildKeySettings();updateUI();boot();
