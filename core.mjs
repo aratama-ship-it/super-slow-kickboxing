@@ -218,7 +218,7 @@ function contact(s,who){
   if(covers){
     const damage=mode==='block'?1:0,drain=mode==='block'?7:5;
     const reason=mode==='block'?handName+'のブロッキングで受けた':handName+'のお腹ブロッキングで受けた';
-    return {who,move:a.id,target:a.target,type:'block',damage,drain,reason};
+    return {who,move:a.id,target:a.target,type:'block',defense:mode,damage,drain,reason};
   }
   const damage=m.damage*(a.target==='body'?.85:1)*(aF.stamina<8?.85:1);
   const parry=parryStatus(dF,required);
