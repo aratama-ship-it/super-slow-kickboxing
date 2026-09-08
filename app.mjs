@@ -1,15 +1,27 @@
-import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.17';
-import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.17';
-import {LAB_CASES,createLabRun,advanceLabRun,labProgress} from './scenario-lab.mjs?v=0.17';
+import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.18';
+import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.18';
+import {LAB_CASES,createLabRun,advanceLabRun,labProgress} from './scenario-lab.mjs?v=0.18';
 const $=id=>document.getElementById(id);
 let state=createMatch(),target='head',view=null,lastFrame=0,accumulator=0,lastUi=-1,lastEvent=0,dirty=true;
 let pauseReason='再開すると、同じ姿勢から続きます。';
+const PARRY_EFFECT_DURATION_MS=720;
+let parryEffectTimer=null;
 const KEY_STORAGE='super-slow-boxing.keymap.v2';
 const LAB_VERDICT_STORAGE='super-slow-boxing.lab-verdicts.v7';
 let keyMap=loadSavedKeys(),listeningAction=null;
 let labCaseIndex=0,labRun=null,labVerdicts=loadLabVerdicts();
 const actionButtons=[...document.querySelectorAll('[data-attack],[data-defense],[data-step],[data-slip],#feint')];
 function applyResult(r){$('input-feedback').textContent=r.message;dirty=true;updateUI();}
+function hideParryEffect(){
+  if(parryEffectTimer!==null){clearTimeout(parryEffectTimer);parryEffectTimer=null;}
+  const effect=$('parry-effect');effect.hidden=true;effect.classList.remove('is-active');effect.textContent='';
+}
+function showParryEffect(){
+  hideParryEffect();
+  const effect=$('parry-effect');effect.hidden=false;effect.textContent='PARRY';
+  void effect.offsetWidth;effect.classList.add('is-active');
+  parryEffectTimer=setTimeout(()=>{effect.hidden=true;effect.classList.remove('is-active');effect.textContent='';parryEffectTimer=null;},PARRY_EFFECT_DURATION_MS);
+}
 function loadSavedKeys(){
   try{return normalizeKeymap(localStorage.getItem(KEY_STORAGE));}catch{return {...DEFAULT_KEYMAP};}
 }
@@ -94,7 +106,7 @@ function captureKey(e){
   if(!saved)message+=' このタブを閉じるまで有効です。';
   listeningAction=null;setKeyStatus(message);refreshKeyLabels();
 }
-function reset(){labRun=null;state=createMatch({mode:isLabMode()?'dummy':$('mode').value,seed:Date.now()>>>0});accumulator=0;lastEvent=0;lastUi=-1;$('input-feedback').textContent=isLabMode()?'固定条件を確認して、1件だけ再生してください。':'開始して、攻撃や守りを選んでください。';$('hit-feedback').textContent='命中・防御の理由をここに表示します。';$('hit-feedback').removeAttribute('data-impact');dirty=true;updateUI();}
+function reset(){hideParryEffect();labRun=null;state=createMatch({mode:isLabMode()?'dummy':$('mode').value,seed:Date.now()>>>0});accumulator=0;lastEvent=0;lastUi=-1;$('input-feedback').textContent=isLabMode()?'固定条件を確認して、1件だけ再生してください。':'開始して、攻撃や守りを選んでください。';$('hit-feedback').textContent='命中・防御の理由をここに表示します。';$('hit-feedback').removeAttribute('data-impact');dirty=true;updateUI();}
 function pause(reason){if(state.phase==='running'){pauseMatch(state);pauseReason=reason||'再開すると、同じ姿勢から続きます。';accumulator=0;dirty=true;updateUI();}}
 function togglePause(){if(state.phase==='running')pause();else if(state.phase==='paused')resume();}
 function resume(){if(!view)return;startMatch(state);lastFrame=performance.now();accumulator=0;$('input-feedback').textContent=isLabMode()?'固定した組み合わせの続きを再生します。':'守りを先に置き、相手の動きを見てみてください。';dirty=true;updateUI();}
@@ -105,7 +117,7 @@ function selectTarget(next,announce=false){
 }
 function startLabCase(){
   if(!view)return;
-  labRun=createLabRun(labCaseIndex);state=labRun.state;accumulator=0;lastEvent=0;lastUi=-1;lastFrame=performance.now();
+  hideParryEffect();labRun=createLabRun(labCaseIndex);state=labRun.state;accumulator=0;lastEvent=0;lastUi=-1;lastFrame=performance.now();
   $('input-feedback').textContent='固定条件で再生中です。操作を加えず、接触と復帰を観察します。';$('hit-feedback').textContent='接触を待っています。';$('hit-feedback').removeAttribute('data-impact');dirty=true;updateUI();
 }
 function selectLabCase(next){
@@ -202,8 +214,9 @@ function updateUI(){
   const a=p.attack,m=a?MOVES[a.id]:null;
   $('feint-window').textContent=!a?'打ち始めの区間だけ引き返せます。':a.feint?'引いています。次の技は戻ってから。':a.t<m.cancel*(a.wind/m.wind)?'いまは「引く」を選べます。':'打ち切る区間です。戻りを待ちます。';
   $('pause').disabled=!['running','paused'].includes(state.phase)||(isLabMode()&&labRun?.status==='complete');$('pause').firstChild.textContent=state.phase==='paused'?'再開 ':'一時停止 ';
-  const newest=state.events.at(-1);
-  if(newest&&newest.id!==lastEvent){
+  const unseenEvents=state.events.filter(event=>event.id>lastEvent),newest=unseenEvents.at(-1);
+  if(newest){
+    if(unseenEvents.some(event=>event.type==='block'&&event.defense==='parry'&&event.who===1))showParryEffect();
     lastEvent=newest.id;
     if(newest.type==='clash'){
       if(newest.who===null)$('hit-feedback').textContent=MOVES[newest.move].name+'と'+MOVES[newest.otherMove].name+'：'+newest.reason;
@@ -231,7 +244,7 @@ function updateUI(){
   updateLabUI();
 }
 async function boot(){
-  try{const {createView}=await import('./view.mjs?v=0.17');view=createView($('stage'));view.render(state);updateUI();}
+  try{const {createView}=await import('./view.mjs?v=0.18');view=createView($('stage'));view.render(state);updateUI();}
   catch(error){$('load-error').hidden=false;$('load-error').textContent='3D画面を起動できませんでした。WebGLに対応したブラウザで、このページを開き直してください。';$('start').textContent='3Dの起動に失敗';console.error(error);}
   requestAnimationFrame(frame);
 }
