@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {MOVES} from './core.mjs';
+import {MOVES,TARGET_HEIGHT} from './core.mjs';
 import {LAB_CASES,runLabToCompletion} from './scenario-lab.mjs';
 
 test('The lab presents jab defenses as separate ordered cases',()=>{
@@ -9,7 +9,7 @@ test('The lab presents jab defenses as separate ordered cases',()=>{
   assert.deepEqual(LAB_CASES.map(item=>item.number),['01','02']);
 });
 
-test('Case 01 proves continuous guard motion, synchronized jab footwork and the 80% parry',()=>{
+test('Case 01 proves the lower face target, continuous guard motion, synchronized footwork and the 80% parry',()=>{
   const run=runLabToCompletion(0);
   assert.equal(run.status,'complete');
   assert.equal(run.impact.event.defense,'parry');
@@ -17,6 +17,7 @@ test('Case 01 proves continuous guard motion, synchronized jab footwork and the 
   assert.equal(run.impact.attackerLeftDeflection>3.8,true);
   assert.equal(run.impact.defenderRightDeflection,0);
   assert.equal(run.impact.defenderRightParry,'tap');
+  assert.ok(run.impact.attackerLeftGlove[1]<=TARGET_HEIGHT.jabHead+.015);
   assert.ok(run.defenseIssuedAt>MOVES.jab.cue);
   assert.ok(run.preCueMotion.samples>=120);
   assert.ok(run.preCueMotion.L.range>=.02&&run.preCueMotion.R.range>=.02);
@@ -28,7 +29,7 @@ test('Case 01 proves continuous guard motion, synchronized jab footwork and the 
   assert.ok(run.tapStart[1]-run.impact.defenderRightGlove[1]>=.04);
   assert.ok(run.rebound.forward>=.12);
   assert.ok(run.rebound.downward>=.16);
-  assert.equal(run.checks.length,7);
+  assert.equal(run.checks.length,8);
   assert.equal(run.checks.every(check=>check.pass),true);
 });
 

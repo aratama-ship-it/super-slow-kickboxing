@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createMatch,startMatch,pauseMatch,tick,STEP,STANCES,MOVES,ARM_DEFLECT_TU,PARRY,GUARD_IDLE,JAB_LEAD_FOOT,CPU_REACTION_DELAY,stanceRole,stanceAngles,restingGlove,gloveLocal,visualGloveLocal,punchTravelProgress,leadFootMotion,parryStatus,currentDefense,deflectionRemaining,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,observeOpponent,distance} from './core.mjs';
+import {createMatch,startMatch,pauseMatch,tick,STEP,STANCES,MOVES,ARM_DEFLECT_TU,PARRY,GUARD_IDLE,TARGET_HEIGHT,JAB_LEAD_FOOT,CPU_REACTION_DELAY,stanceRole,stanceAngles,restingGlove,gloveLocal,visualGloveLocal,punchTravelProgress,leadFootMotion,parryStatus,currentDefense,deflectionRemaining,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,observeOpponent,distance,bodyTarget} from './core.mjs';
 const run=(s,t,cpuEnabled=false)=>{for(let i=0;i<Math.round(t/STEP);i++)tick(s,STEP,{cpuEnabled});};
 const match=options=>{const s=createMatch(options);startMatch(s);return s;};
 const defend=(f,side,mode)=>{f.defense[side]={from:mode,to:mode,t:3};};
@@ -43,6 +43,15 @@ test('A jab keeps the idle hand motion before its cue, then starts the glove and
   assert.ok(drift>.02);assert.equal(handStartAt,footStartAt);assert.ok(handStartAt>=MOVES.jab.cue&&handStartAt<MOVES.jab.cue+STEP*1.1);
   assert.ok(gloveLocal(f,'L')[2]>base[2]);assert.ok(leadFootMotion(f).forward>0);
   assert.ok(Math.hypot(...launchVisual.map((v,i)=>v-lastVisual[i]))<.03);
+});
+
+test('A head jab aims at the middle of the face below the shared head target',()=>{
+  const jab=match(),cross=match();requestAttack(jab,0,'jab','head');requestAttack(cross,0,'cross','head');
+  jab.fighters[0].attack.t=jab.fighters[0].attack.wind-STEP/10;cross.fighters[0].attack.t=cross.fighters[0].attack.wind-STEP/10;
+  const jabY=gloveLocal(jab.fighters[0],'L')[1],crossY=gloveLocal(cross.fighters[0],'R')[1];
+  assert.ok(Math.abs(jabY-TARGET_HEIGHT.jabHead)<.001);assert.ok(Math.abs(crossY-TARGET_HEIGHT.head)<.001);
+  assert.ok(Math.abs((TARGET_HEIGHT.head-TARGET_HEIGHT.jabHead)-.10)<.001);
+  assert.equal(bodyTarget(jab.fighters[1],'head','jab')[1],TARGET_HEIGHT.jabHead);
 });
 test('A jab advances and lifts the lead foot with the glove, then returns it to stance',()=>{
   const s=match();requestAttack(s,0,'jab');run(s,3.3);

@@ -1,11 +1,11 @@
-import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.16';
-import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.16';
-import {LAB_CASES,createLabRun,advanceLabRun,labProgress} from './scenario-lab.mjs?v=0.16';
+import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.17';
+import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.17';
+import {LAB_CASES,createLabRun,advanceLabRun,labProgress} from './scenario-lab.mjs?v=0.17';
 const $=id=>document.getElementById(id);
 let state=createMatch(),target='head',view=null,lastFrame=0,accumulator=0,lastUi=-1,lastEvent=0,dirty=true;
 let pauseReason='再開すると、同じ姿勢から続きます。';
 const KEY_STORAGE='super-slow-boxing.keymap.v2';
-const LAB_VERDICT_STORAGE='super-slow-boxing.lab-verdicts.v6';
+const LAB_VERDICT_STORAGE='super-slow-boxing.lab-verdicts.v7';
 let keyMap=loadSavedKeys(),listeningAction=null;
 let labCaseIndex=0,labRun=null,labVerdicts=loadLabVerdicts();
 const actionButtons=[...document.querySelectorAll('[data-attack],[data-defense],[data-step],[data-slip],#feint')];
@@ -176,7 +176,7 @@ function updateLabUI(){
   }else{
     $('lab-observed').textContent=labRun?progress.label:'まだ再生していません。';$('lab-after').textContent='接触後に両者の該当腕を表示します。';
   }
-  const checks=labRun?.status==='complete'?labRun.checks:[{label:'再生後、'+(definition.id==='jab-right-parry'?'7':'5')+'項目を判定します',pass:null}];
+  const checks=labRun?.status==='complete'?labRun.checks:[{label:'再生後、'+(definition.id==='jab-right-parry'?'8':'5')+'項目を判定します',pass:null}];
   $('lab-checks').replaceChildren(...checks.map(check=>{const li=document.createElement('li');li.textContent=(check.pass===null?'○':check.pass?'✓':'×')+' '+check.label;if(check.pass!==null)li.dataset.pass=String(check.pass);return li;}));
   const complete=labRun?.status==='complete';$('lab-accept').disabled=!complete;$('lab-adjust').disabled=!complete;$('lab-replay').disabled=!view;
   $('lab-prev').disabled=labCaseIndex===0;$('lab-next').disabled=labCaseIndex===LAB_CASES.length-1||verdict!=='accepted';
@@ -231,7 +231,7 @@ function updateUI(){
   updateLabUI();
 }
 async function boot(){
-  try{const {createView}=await import('./view.mjs?v=0.16');view=createView($('stage'));view.render(state);updateUI();}
+  try{const {createView}=await import('./view.mjs?v=0.17');view=createView($('stage'));view.render(state);updateUI();}
   catch(error){$('load-error').hidden=false;$('load-error').textContent='3D画面を起動できませんでした。WebGLに対応したブラウザで、このページを開き直してください。';$('start').textContent='3Dの起動に失敗';console.error(error);}
   requestAnimationFrame(frame);
 }

@@ -3,6 +3,7 @@ import {
   MOVES,
   PARRY,
   STEP,
+  TARGET_HEIGHT,
   createMatch,
   currentDefense,
   deflectionRemaining,
@@ -16,15 +17,15 @@ import {
   requestDefense,
   startMatch,
   tick,
-} from './core.mjs?v=0.16';
+} from './core.mjs?v=0.17';
 
 export const LAB_CASES=Object.freeze([
   Object.freeze({
     id:'jab-right-parry',number:'01',title:'相手の左ジャブ × 右手パーリング',
-    question:'両手の小さい動きに予備動作を紛れさせ、左拳と左前足を同時に進めて、進行80%付近の拳を右手で下へ外せるか。',
+    question:'鼻から口の高さへ向かう左ジャブを、両手の小さい動きから左前足と同時に進め、進行80%付近で右手により下へ外せるか。',
     defense:'右手パーリング',defenseAt:3,
-    conditions:Object.freeze(['パンチの間合い','相手は頭へ左ジャブ','開始から2.7 TUまでは両手の小動作だけ','2.7 TUの同じ固定tickで左拳と左前足が前進開始','開始3.0 TUで右手パーリング','拳の進行80〜82.5%で接触','他の入力なし']),
-    expected:'左右の拳は構え中から小さく動き続け、ジャブ固有の引き動作を見せない。2.7 TUから左拳と左前足が同時に前へ出る。右手は内側へ入れず、ガード位置の真上から小さく落とす。相手の左拳は自分へ進みながら下へ外れ、ダメージ0。相手の左腕だけが4 TU使用不能。',
+    conditions:Object.freeze(['パンチの間合い','相手は鼻から口の高さへ左ジャブ','開始から2.7 TUまでは両手の小動作だけ','2.7 TUの同じ固定tickで左拳と左前足が前進開始','開始3.0 TUで右手パーリング','拳の進行80〜82.5%で接触','他の入力なし']),
+    expected:'左ジャブの拳中心は額より10cm低い顔中央へ向かう。左右の拳は構え中から小さく動き続け、ジャブ固有の引き動作を見せない。2.7 TUから左拳と左前足が同時に前へ出る。右手は内側へ入れず、ガード位置の真上から小さく落とす。相手の左拳は自分へ進みながら下へ外れ、ダメージ0。相手の左腕だけが4 TU使用不能。',
   }),
   Object.freeze({
     id:'jab-right-block',number:'02',title:'相手の左ジャブ × 右手ブロッキング',
@@ -66,6 +67,7 @@ function sampleMotion(tracker,pose){
 function completeChecks(run){
   const {state,definition,impact}=run,event=impact?.event;
   if(definition.id==='jab-right-parry')return [
+    {label:'左ジャブの拳中心が額より低い顔中央へ向かった',pass:impact?.attackerLeftGlove[1]<=TARGET_HEIGHT.jabHead+.015},
     {label:'ジャブが出る前も左右の拳が小さく動き続けた',pass:run.preCueMotion.samples>=120&&run.preCueMotion.L.range>=.02&&run.preCueMotion.R.range>=.02},
     {label:'左拳と左前足が同じ固定tickで前進を開始',pass:run.punchStartAt!==null&&run.leadFootStartAt!==null&&Math.abs(run.punchStartAt-run.leadFootStartAt)<STEP/2},
     {label:'ジャブの進行80%到達後に接触',pass:run.defenseIssuedAt>MOVES.jab.cue&&run.leadFootPeak>=.075&&event?.type==='block'&&event?.defense==='parry'&&event.punchProgress>=PARRY.contactProgress.jab&&event.punchProgress<=PARRY.contactProgress.jab+PARRY.progressTolerance},

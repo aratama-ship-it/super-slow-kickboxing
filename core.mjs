@@ -23,6 +23,7 @@ export const PARRY=Object.freeze({
   deflectPeak:.45,deflectDrop:.18,deflectForward:.14,
 });
 export const GUARD_IDLE=Object.freeze({x:.012,y:.018,z:.014,periods:Object.freeze({x:Object.freeze([1.9,.83]),y:Object.freeze([1.5,.71]),z:Object.freeze([2.1,.97])})});
+export const TARGET_HEIGHT=Object.freeze({head:1.64,jabHead:1.54,body:1.12});
 export const JAB_LEAD_FOOT=Object.freeze({forward:.10,lift:.018,kneeForwardRatio:.45,deflectReturn:1.1});
 export const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
 const lerp=(a,b,t)=>a+(b-a)*t;
@@ -170,7 +171,7 @@ export function gloveLocal(f,side){
   if(!a||MOVES[a.id].side!==side)return [base[0]+slipOffset(f)*.6,base[1],base[2]];
   const m=MOVES[a.id],sign=side==='L'?1:-1;
   if(a.feint)return mix(a.cancelPose,base,ease((a.t-a.feintStart)/a.feintDuration));
-  const targetY=a.target==='head'?1.64:1.12;
+  const targetY=a.target==='head'?(a.id==='jab'?TARGET_HEIGHT.jabHead:TARGET_HEIGHT.head):TARGET_HEIGHT.body;
   const end=[sign*.025,targetY,m.reach-.13];
   const lead=stanceRole(f,side)==='lead';
   const chamber=m.kind==='hook'?[sign*.53,targetY-.07,lead?.28:.10]:m.kind==='upper'?[sign*.25,1.03,lead?.27:.13]:[sign*.22,1.46,lead?.35:.13];
@@ -216,7 +217,7 @@ export function visualGloveLocal(f,side,time,{idle=true}={}){
   return pose.map((v,i)=>v+offset[i]);
 }
 export function localToWorld(f,p){return [p[0]*f.face,p[1],f.z+p[2]*f.face];}
-export function bodyTarget(f,target){return localToWorld(f,[slipOffset(f),target==='head'?1.64:1.12,.10]);}
+export function bodyTarget(f,target,moveId=null){return localToWorld(f,[slipOffset(f),target==='head'?(moveId==='jab'?TARGET_HEIGHT.jabHead:TARGET_HEIGHT.head):TARGET_HEIGHT.body,.10]);}
 function deflectHand(f,side,duration,trajectory='outward',time=0){
   const from=gloveLocal(f,side).slice(),visual=visualGloveLocal(f,side,time);
   const jabFoot=f.attack?.id==='jab'?leadFootMotion(f):null;
@@ -296,7 +297,7 @@ function resolvePunchClash(s){
 }
 function contact(s,who){
   const aF=s.fighters[who],dF=s.fighters[1-who],a=aF.attack,m=MOVES[a.id];
-  const glove=localToWorld(aF,gloveLocal(aF,m.side)),target=bodyTarget(dF,a.target);
+  const glove=localToWorld(aF,gloveLocal(aF,m.side)),target=bodyTarget(dF,a.target,a.id);
   const rx=a.target==='head'?.24:.32,ry=a.target==='head'?.25:.32,rz=.27;
   const ellipsoid=((glove[0]-target[0])/rx)**2+((glove[1]-target[1])/ry)**2+((glove[2]-target[2])/rz)**2;
   if(ellipsoid>1)return {who,move:a.id,target:a.target,type:'miss',damage:0,reason:Math.abs(glove[0]-target[0])>rx*.75?'頭の位置が外れた':'届かなかった'};
