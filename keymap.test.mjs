@@ -6,10 +6,15 @@ test('Default key assignments are complete, unique and readable',()=>{
   assert.equal(Object.keys(DEFAULT_KEYMAP).length,KEY_BINDINGS.length);
   assert.equal(KEY_BINDINGS.length,19);
   assert.equal(new Set(Object.values(DEFAULT_KEYMAP)).size,KEY_BINDINGS.length);
+  assert.deepEqual(DEFAULT_KEYMAP,{
+    'target.toggle':'ShiftLeft',
+    'attack.jab':'KeyJ','attack.cross':'KeyK','attack.hookL':'KeyU','attack.hookR':'KeyI','attack.upperL':'KeyM','attack.upperR':'Comma',
+    'defense.L.parry':'KeyH','defense.R.parry':'KeyL','defense.L.block':'KeyY','defense.R.block':'KeyO','defense.L.body':'KeyN','defense.R.body':'Period',
+    'step.in':'KeyW','step.out':'KeyS','slip.L':'KeyA','slip.R':'KeyD',feint:'KeyF',pause:'Space'
+  });
   assert.equal(keyLabel(DEFAULT_KEYMAP['target.toggle']),'左Shift');
-  assert.equal(keyLabel(DEFAULT_KEYMAP['attack.jab']),'J');
-  assert.equal(keyLabel(DEFAULT_KEYMAP['defense.R.body']),'6');
-  assert.equal(keyLabel(DEFAULT_KEYMAP.pause),'Space');
+  assert.equal(keyLabel(DEFAULT_KEYMAP['attack.upperR']),',');
+  assert.equal(keyLabel(DEFAULT_KEYMAP['defense.R.body']),'.');
 });
 
 test('Malformed or duplicate saved assignments safely restore the defaults',()=>{
