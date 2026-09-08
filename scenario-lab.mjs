@@ -1,24 +1,26 @@
 import {
   ARM_DEFLECT_TU,
+  PARRY,
   STEP,
   createMatch,
   currentDefense,
   deflectionRemaining,
+  gloveLocal,
   parryStatus,
   pauseMatch,
   requestAttack,
   requestDefense,
   startMatch,
   tick,
-} from './core.mjs?v=0.11';
+} from './core.mjs?v=0.12';
 
 export const LAB_CASES=Object.freeze([
   Object.freeze({
     id:'jab-right-parry',number:'01',title:'相手の左ジャブ × 右手パーリング',
-    question:'払ったとき、相手の左腕だけが4 TU弾かれ、自分の右手は払いの動作を終えて戻るか。',
+    question:'進行70%付近で上から小さく叩くと、相手の左拳が前進しながら下へ外れるか。',
     defense:'右手パーリング',defenseAt:1,
-    conditions:Object.freeze(['パンチの間合い','相手は頭へ左ジャブ','ジャブ開始1.0 TU後に右手パーリング','他の入力なし']),
-    expected:'ダメージ0。相手の左腕だけが4 TU使用不能。自分の右手は弾かれず、払いから戻るまで別の動作を始めない。',
+    conditions:Object.freeze(['パンチの間合い','相手は頭へ左ジャブ','ジャブ開始1.0 TU後に右手パーリング','拳の進行69〜72%付近で接触','他の入力なし']),
+    expected:'右手を上から小さく落とす。相手の左拳は自分へ進みながら下へ外れ、ダメージ0。相手の左腕だけが4 TU使用不能。',
   }),
   Object.freeze({
     id:'jab-right-block',number:'02',title:'相手の左ジャブ × 右手ブロッキング',
@@ -30,20 +32,32 @@ export const LAB_CASES=Object.freeze([
 ]);
 
 const captureImpact=(state,event)=>({
+  time:state.time,
   event:{...event},
   playerHp:state.fighters[0].hp,
   attackerLeftDeflection:deflectionRemaining(state.fighters[1],'L'),
   defenderRightDeflection:deflectionRemaining(state.fighters[0],'R'),
   defenderRightParry:parryStatus(state.fighters[0],'R')?.phase||null,
+  attackerLeftGlove:gloveLocal(state.fighters[1],'L').slice(),
+  defenderRightGlove:gloveLocal(state.fighters[0],'R').slice(),
 });
+
+const captureRebound=(state,impact)=>{
+  const glove=gloveLocal(state.fighters[1],'L').slice();
+  return {
+    time:state.time,attackerLeftGlove:glove,
+    forward:glove[2]-impact.attackerLeftGlove[2],
+    downward:impact.attackerLeftGlove[1]-glove[1],
+  };
+};
 
 function completeChecks(run){
   const {state,definition,impact}=run,event=impact?.event;
   if(definition.id==='jab-right-parry')return [
-    {label:'右手パーリングが接触',pass:event?.type==='block'&&event?.defense==='parry'},
-    {label:'自分のダメージは0',pass:event?.damage===0&&impact.playerHp===100},
-    {label:'相手の左腕だけが4 TU弾かれた',pass:impact.attackerLeftDeflection>ARM_DEFLECT_TU-.2&&impact.defenderRightDeflection===0},
-    {label:'自分の右手は弾かれず、払い動作を続けた',pass:['sweep','return'].includes(impact.defenderRightParry)&&impact.defenderRightDeflection===0},
+    {label:'ジャブ進行70%付近で接触',pass:event?.type==='block'&&event?.defense==='parry'&&Math.abs(event.punchProgress-PARRY.contactProgress)<=PARRY.progressTolerance},
+    {label:'自分の右手を上から小さく下ろした',pass:run.tapStart&&impact.defenderRightParry==='tap'&&run.tapStart[1]-impact.defenderRightGlove[1]>=.08&&Math.abs(run.tapStart[0]-impact.defenderRightGlove[0])<.08},
+    {label:'自分はダメージ0、右腕は弾かれない',pass:event?.damage===0&&impact.playerHp===100&&impact.defenderRightDeflection===0},
+    {label:'相手の左拳だけが前進しながら下へ弾かれた',pass:impact.attackerLeftDeflection>ARM_DEFLECT_TU-.2&&run.rebound?.forward>=PARRY.deflectForward-.02&&run.rebound?.downward>=PARRY.deflectDrop-.02},
     {label:'両者の該当腕が規定の動作を終えて復帰',pass:deflectionRemaining(state.fighters[1],'L')===0&&!parryStatus(state.fighters[0],'R')&&currentDefense(state.fighters[0],'R')==='block'},
   ];
   return [
@@ -62,7 +76,7 @@ export function createLabRun(caseIndex=0){
   startMatch(state);
   const started=requestAttack(state,1,'jab','head');
   if(!started.ok)throw new Error(started.message);
-  return {definition,caseIndex,state,status:'running',defenseIssued:false,impact:null,checks:[]};
+  return {definition,caseIndex,state,status:'running',defenseIssued:false,tapStart:null,impact:null,rebound:null,checks:[]};
 }
 
 export function advanceLabRun(run,dt=STEP){
@@ -74,11 +88,13 @@ export function advanceLabRun(run,dt=STEP){
     if(!defense.ok)throw new Error(defense.message);
     run.defenseIssued=true;
   }
+  if(!run.tapStart&&parryStatus(run.state.fighters[0],'R')?.phase==='tap')run.tapStart=gloveLocal(run.state.fighters[0],'R').slice();
   if(!run.impact&&run.state.eventId>previousEventId){
     const event=run.state.events.at(-1);
     run.impact=captureImpact(run.state,event);
   }
   if(!run.impact)return run;
+  if(!run.rebound&&run.definition.id==='jab-right-parry'&&run.state.fighters[1].deflection.L?.t>=PARRY.deflectPeak)run.rebound=captureRebound(run.state,run.impact);
   const recovered=run.definition.id==='jab-right-parry'
     ? deflectionRemaining(run.state.fighters[1],'L')===0&&!parryStatus(run.state.fighters[0],'R')
     : run.state.fighters[1].attack===null;
@@ -95,11 +111,11 @@ export function labProgress(run){
   if(run.status==='complete')return {phase:'complete',label:'復帰まで確認'};
   if(run.impact){
     const remaining=run.definition.id==='jab-right-parry'?deflectionRemaining(run.state.fighters[1],'L'):0;
-    return {phase:'rebound',label:remaining>0?'相手の左腕が弾かれ中 '+remaining.toFixed(1)+' TU':'復帰を確認中'};
+    return {phase:'rebound',label:remaining>0?(run.rebound?'相手の左拳が前進しながら下へ弾かれ中 ':'相手の左拳を下へ弾いている ')+remaining.toFixed(1)+' TU':'復帰を確認中'};
   }
   if(run.definition.defenseAt!==null&&run.defenseIssued){
     const parry=parryStatus(run.state.fighters[0],'R');
-    return {phase:'defense',label:parry?.phase==='prepare'?'右手の払いを準備中':parry?.phase==='sweep'?'右手で外へ払い中':'接触を確認中'};
+    return {phase:'defense',label:parry?.phase==='prepare'?'右手を少し上へ準備中':parry?.phase==='tap'?'右手を上から小さく落としている':'接触を確認中'};
   }
   return {phase:'attack',label:'相手の左ジャブが始動'};
 }

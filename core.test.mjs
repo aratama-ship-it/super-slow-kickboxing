@@ -13,12 +13,12 @@ test('Orthodox stance keeps the left hand forward and the right hand rear in eve
     for(const mode of ['block','body']){defend(f,'L',mode);defend(f,'R',mode);assert.ok(restingGlove(f,'L')[2]>restingGlove(f,'R')[2],mode+' defense must keep the left glove forward');}
   }
 });
-test('A predicted right sweep parries a jab; reacting after identification is too late',()=>{
-  const pre=match();requestAttack(pre,0,'jab');run(pre,1);requestDefense(pre,1,'R','parry');run(pre,3.1);assert.equal(pre.fighters[1].hp,100);assert.equal(pre.events.at(-1).defense,'parry');assert.match(pre.events.at(-1).reason,/右手のパーリング/);
+test('A predicted right downward tap parries a jab near 70% travel; reacting after identification is too late',()=>{
+  const pre=match();requestAttack(pre,0,'jab');run(pre,1);requestDefense(pre,1,'R','parry');run(pre,3.1);assert.equal(pre.fighters[1].hp,100);assert.equal(pre.events.at(-1).defense,'parry');assert.match(pre.events.at(-1).reason,/右手で進行\d+%の拳を上から小さく叩き/);assert.ok(Math.abs(pre.events.at(-1).punchProgress-PARRY.contactProgress)<=PARRY.progressTolerance);
   const late=match();requestAttack(late,0,'jab');run(late,2.8);requestDefense(late,1,'R','parry');run(late,1.3);assert.equal(late.fighters[1].hp,96);assert.equal(late.events.at(-1).reason,'パーリングの準備が間に合わなかった');
 });
 test('A hook passes a parry while the required head block covers it',()=>{
-  const parry=match();requestAttack(parry,0,'hookL');run(parry,4.5);requestDefense(parry,1,'R','parry');run(parry,3.1);assert.equal(parry.events.at(-1).type,'hit');assert.equal(parry.events.at(-1).reason,'パーリングの外を通った');
+  const parry=match();requestAttack(parry,0,'hookL');run(parry,4.5);requestDefense(parry,1,'R','parry');run(parry,3.1);assert.equal(parry.events.at(-1).type,'hit');assert.notEqual(parry.events.at(-1).defense,'parry');
   const covered=match();defend(covered.fighters[1],'R','block');requestAttack(covered,0,'hookL');run(covered,7.6);assert.equal(covered.events.at(-1).type,'block');assert.equal(covered.fighters[1].hp,99);
 });
 test('A body punch requires body blocking by the opposing hand',()=>{
@@ -42,12 +42,13 @@ test('When punches collide, only the weaker arm is deflected and the stronger pu
   run(s,2.6);assert.equal(s.events.at(-1).type,'hit');assert.equal(s.events.at(-1).reason,'必要な腕が弾かれている');
   run(s,1.5);assert.equal(deflectionRemaining(s.fighters[0],'L'),0);assert.equal(requestAttack(s,0,'jab').ok,true);
 });
-test('Only the attacking arm is deflected; the parrying hand finishes its normal sweep and return',()=>{
+test('Only the attacking glove continues forward and down; the tapping hand is not deflected',()=>{
   const s=match();requestAttack(s,0,'jab');run(s,1);requestDefense(s,1,'R','parry');run(s,2.6);
-  assert.equal(s.events.at(-1).type,'block');assert.match(s.events.at(-1).reason,/攻撃側の左腕を弾いた/);
+  assert.equal(s.events.at(-1).type,'block');assert.match(s.events.at(-1).reason,/攻撃側の左拳を下へ弾いた/);
   assert.ok(deflectionRemaining(s.fighters[0],'L')>ARM_DEFLECT_TU-.2);assert.equal(deflectionRemaining(s.fighters[1],'R'),0);
+  const from=s.fighters[0].deflection.L.from.slice();run(s,PARRY.deflectPeak);const redirected=gloveLocal(s.fighters[0],'L');assert.ok(redirected[2]-from[2]>=PARRY.deflectForward-.02);assert.ok(from[1]-redirected[1]>=PARRY.deflectDrop-.02);
   assert.equal(s.fighters[0].attack,null);assert.equal(requestDefense(s,0,'L','body').ok,false);assert.equal(requestDefense(s,1,'R','body').ok,false);assert.equal(requestAttack(s,1,'cross').ok,false);
-  assert.equal(requestAttack(s,1,'jab').ok,true);run(s,3.9);assert.equal(requestDefense(s,1,'R','body').ok,true);assert.equal(requestAttack(s,1,'cross').ok,true);
+  assert.equal(requestAttack(s,1,'jab').ok,true);run(s,3.2);assert.equal(requestDefense(s,1,'R','body').ok,true);assert.equal(requestAttack(s,1,'cross').ok,true);
 });
 test('Blocking absorbs a punch without deflecting either arm',()=>{
   const s=match();requestAttack(s,0,'jab');run(s,4.1);
@@ -95,15 +96,15 @@ test('Pause freezes everything; invalid input is rejected',()=>{
 test('CPU is deterministic with a fixed seed, stays finite and finishes the round',()=>{
   const a=match({duration:80,seed:77}),b=match({duration:80,seed:77});run(a,81,true);run(b,81,true);assert.equal(JSON.stringify(a),JSON.stringify(b));assert.equal(a.phase,'ended');assert.ok(a.eventId>0);for(const f of a.fighters){assert.ok(f.hp>=0&&f.hp<=100);assert.ok(f.stamina>=0&&f.stamina<=100);assert.ok(Number.isFinite(f.z));}
 });
-test('Each hand sweeps from inside to its own outside, keeping orthodox depth, then returns to its prior block',()=>{
+test('Each hand rises slightly, taps down with little sideways movement, keeps orthodox depth, then returns',()=>{
   const s=match(),f=s.fighters[0];defend(f,'L','body');
   const before={L:gloveLocal(f,'L'),R:gloveLocal(f,'R')};
   for(const side of ['L','R']){requestDefense(s,0,side,'parry');assert.deepEqual(gloveLocal(f,side),before[side]);assert.equal(currentDefense(f,side),'open');}
-  run(s,2.5);const inner={L:gloveLocal(f,'L'),R:gloveLocal(f,'R')};
-  assert.equal(parryStatus(f,'L').phase,'sweep');assert.ok(inner.L[2]>inner.R[2]);
-  run(s,1.3);assert.ok(gloveLocal(f,'L')[0]>inner.L[0]);assert.ok(gloveLocal(f,'R')[0]<inner.R[0]);
-  run(s,.3);assert.equal(parryStatus(f,'L').phase,'return');assert.equal(currentDefense(f,'L'),'open');
-  run(s,2.4);assert.equal(f.parry.L,null);assert.equal(f.parry.R,null);assert.equal(currentDefense(f,'L'),'body');assert.equal(currentDefense(f,'R'),'block');assert.deepEqual(gloveLocal(f,'L'),before.L);
+  run(s,1.95);const above={L:gloveLocal(f,'L'),R:gloveLocal(f,'R')};assert.ok(above.L[1]>before.L[1]);assert.ok(above.R[1]>before.R[1]);
+  run(s,.45);const tapped={L:gloveLocal(f,'L'),R:gloveLocal(f,'R')};
+  assert.equal(parryStatus(f,'L').phase,'tap');assert.ok(tapped.L[1]<above.L[1]);assert.ok(tapped.R[1]<above.R[1]);assert.ok(tapped.L[2]>tapped.R[2]);assert.ok(Math.abs(tapped.L[0]-above.L[0])<.04);assert.ok(Math.abs(tapped.R[0]-above.R[0])<.04);
+  run(s,.5);assert.equal(parryStatus(f,'L').phase,'return');assert.equal(currentDefense(f,'L'),'open');
+  run(s,1.8);assert.equal(f.parry.L,null);assert.equal(f.parry.R,null);assert.equal(currentDefense(f,'L'),'body');assert.equal(currentDefense(f,'R'),'block');assert.deepEqual(gloveLocal(f,'L'),before.L);
 });
 test('A parry cannot be refreshed or cancelled by attacks or guards, and a whiff still costs stamina',()=>{
   const s=match(),f=s.fighters[0];requestDefense(s,0,'R','parry');assert.equal(f.stamina,100-PARRY.cost);run(s,1);
@@ -116,8 +117,8 @@ test('An early parry leaves a return opening; a wrong-side parry does not cover 
   const early=match();requestAttack(early,0,'jab');requestDefense(early,1,'R','parry');run(early,4.1);assert.equal(early.events.at(-1).reason,'パーリングから戻っている途中');assert.equal(early.fighters[1].hp,96);
   const wrong=match();defend(wrong.fighters[1],'R','body');requestAttack(wrong,0,'jab');run(wrong,1);requestDefense(wrong,1,'L','parry');run(wrong,3.1);assert.equal(wrong.events.at(-1).type,'hit');assert.equal(wrong.fighters[0].deflection.L,null);
 });
-test('A timed left parry catches a right straight; body and uppercut punches are outside its coverage',()=>{
-  const straight=match();requestAttack(straight,0,'cross');run(straight,1);requestDefense(straight,1,'L','parry');run(straight,5.2);assert.equal(straight.events.at(-1).defense,'parry');assert.equal(straight.fighters[1].hp,100);
+test('A separately timed left parry catches a right straight; body and uppercut punches are outside its coverage',()=>{
+  const straight=match();requestAttack(straight,0,'cross');run(straight,2);requestDefense(straight,1,'L','parry');run(straight,4.2);assert.equal(straight.events.at(-1).defense,'parry');assert.equal(straight.fighters[1].hp,100);
   for(const [move,target,delay] of [['cross','body',3],['upperR','head',3.5]]){
     const s=match();if(move==='upperR'){s.fighters[0].z=.55;s.fighters[1].z=-.55;}requestAttack(s,0,move,target);run(s,delay);requestDefense(s,1,'L','parry');run(s,3.2);assert.equal(s.events.at(-1).type,'hit');assert.equal(s.fighters[0].deflection.R,null);
   }

@@ -15,7 +15,10 @@ export const STEP=1/60;
 export const PUNCH_CLASH_DISTANCE=.2;
 export const ARM_DEFLECT_TU=4;
 export const EQUAL_CLASH_DEFLECT_TU=3;
-export const PARRY=Object.freeze({prepare:2.4,sweep:1.6,recover:2.4,cost:5,contactDistance:.22});
+export const PARRY=Object.freeze({
+  prepare:2,tap:.8,recover:1.8,cost:5,contactDistance:.24,
+  contactProgress:.70,progressTolerance:.025,deflectPeak:.65,deflectDrop:.28,deflectForward:.22,
+});
 export const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
 const lerp=(a,b,t)=>a+(b-a)*t;
 const ease=t=>{t=clamp(t,0,1);return t*t*(3-2*t);};
@@ -33,7 +36,7 @@ function event(s,data){s.events.push({id:++s.eventId,time:s.time,...data});if(s.
 function result(f,ok,message){f.lastReason=message;return {ok,message};}
 export function currentDefense(f,side){
   const p=parryStatus(f,side);
-  if(p)return p.phase==='sweep'&&!f.parry[side].used?'parry':'open';
+  if(p)return p.phase==='tap'&&!f.parry[side].used?'parry':'open';
   const hand=f.defense[side];
   if(hand.t>=3)return hand.to;
   const ratio=hand.t/3;
@@ -42,9 +45,9 @@ export function currentDefense(f,side){
 export function deflectionRemaining(f,side){const d=f.deflection[side];return d?Math.max(0,d.duration-d.t):0;}
 export function parryStatus(f,side){
   const p=f.parry[side];if(!p)return null;
-  const phase=p.t<PARRY.prepare?'prepare':p.t<PARRY.prepare+PARRY.sweep?'sweep':'return';
-  const end=phase==='prepare'?PARRY.prepare:phase==='sweep'?PARRY.prepare+PARRY.sweep:PARRY.prepare+PARRY.sweep+PARRY.recover;
-  return {phase,remaining:Math.max(0,end-p.t),direction:side==='L'?'左外':'右外',used:p.used};
+  const phase=p.t<PARRY.prepare?'prepare':p.t<PARRY.prepare+PARRY.tap?'tap':'return';
+  const end=phase==='prepare'?PARRY.prepare:phase==='tap'?PARRY.prepare+PARRY.tap:PARRY.prepare+PARRY.tap+PARRY.recover;
+  return {phase,remaining:Math.max(0,end-p.t),direction:'上から下',used:p.used};
 }
 export function available(s,who,id){
   const f=s.fighters[who],m=MOVES[id];
@@ -77,7 +80,7 @@ export function requestDefense(s,who,side,mode){
     const from=gloveLocal(f,side).slice();
     f.parry[side]={t:0,from,used:false};f.stamina-=PARRY.cost;
     if(f.queue&&MOVES[f.queue.id].side===side)f.queue=null;
-    return result(f,true,name+'：準備して'+(side==='L'?'左外':'右外')+'へ払います');
+    return result(f,true,name+'：手を少し上げ、上から小さく叩きます');
   }
   if(hand.to===mode)return result(f,true,name+'を維持');
   f.defense[side]={from:currentDefense(f,side),to:mode,t:0};return result(f,true,name+'へ移動中');
@@ -131,16 +134,21 @@ export function restingGlove(f,side){const hand=f.defense[side];return mix(defen
 export function gloveLocal(f,side){
   const base=restingGlove(f,side),d=f.deflection[side],a=f.attack,p=f.parry[side];
   if(d){
+    if(d.trajectory==='parry-down'){
+      const peak=[d.from[0],clamp(d.from[1]-PARRY.deflectDrop,1.12,1.42),d.from[2]+PARRY.deflectForward];
+      if(d.t<PARRY.deflectPeak)return mix(d.from,peak,ease(d.t/PARRY.deflectPeak));
+      return mix(peak,[base[0]+slipOffset(f)*.6,base[1],base[2]],ease((d.t-PARRY.deflectPeak)/(d.duration-PARRY.deflectPeak)));
+    }
     const sign=side==='L'?1:-1,peak=[sign*.62,clamp(d.from[1]-.18,1.06,1.42),-.02],out=.65;
     if(d.t<out)return mix(d.from,peak,ease(d.t/out));
     return mix(peak,[base[0]+slipOffset(f)*.6,base[1],base[2]],ease((d.t-out)/(d.duration-out)));
   }
   if(p){
-    const sign=side==='L'?1:-1,depth=stanceRole(f,side)==='lead'?.12:-.08,offset=slipOffset(f)*.6;
-    const inner=[sign*-.09+offset,1.60,.42+depth],outer=[sign*.44+offset,1.60,.42+depth];
-    if(p.t<PARRY.prepare)return mix(p.from,inner,ease(p.t/PARRY.prepare));
-    if(p.t<PARRY.prepare+PARRY.sweep)return mix(inner,outer,ease((p.t-PARRY.prepare)/PARRY.sweep));
-    return mix(outer,[base[0]+offset,base[1],base[2]],ease((p.t-PARRY.prepare-PARRY.sweep)/PARRY.recover));
+    const sign=side==='L'?1:-1,offset=slipOffset(f)*.6,depth=stanceRole(f,side)==='lead'?.06:-.04;
+    const above=[sign*-.10+offset,1.72,.36+depth],tap=[sign*-.08+offset,1.56,.42+depth];
+    if(p.t<PARRY.prepare)return mix(p.from,above,ease(p.t/PARRY.prepare));
+    if(p.t<PARRY.prepare+PARRY.tap)return mix(above,tap,ease((p.t-PARRY.prepare)/PARRY.tap));
+    return mix(tap,[base[0]+offset,base[1],base[2]],ease((p.t-PARRY.prepare-PARRY.tap)/PARRY.recover));
   }
   if(!a||MOVES[a.id].side!==side)return [base[0]+slipOffset(f)*.6,base[1],base[2]];
   const m=MOVES[a.id],sign=side==='L'?1:-1;
@@ -160,9 +168,9 @@ export function gloveLocal(f,side){
 }
 export function localToWorld(f,p){return [p[0]*f.face,p[1],f.z+p[2]*f.face];}
 export function bodyTarget(f,target){return localToWorld(f,[slipOffset(f),target==='head'?1.64:1.12,.10]);}
-function deflectHand(f,side,duration){
+function deflectHand(f,side,duration,trajectory='outward'){
   const from=gloveLocal(f,side).slice();
-  f.deflection[side]={t:0,duration,from};
+  f.deflection[side]={t:0,duration,from,trajectory};
   f.parry[side]=null;
   if(f.attack&&MOVES[f.attack.id].side===side)f.attack=null;
   if(f.queue&&MOVES[f.queue.id].side===side)f.queue=null;
@@ -172,16 +180,24 @@ function activePunch(f){
   const a=f.attack,m=a?MOVES[a.id]:null;
   return a&&!a.feint&&!a.hit&&a.t>=m.cue*(a.wind/m.wind)?{a,m}:null;
 }
+export function punchTravelProgress(f){
+  const a=f.attack,m=a?MOVES[a.id]:null;
+  if(!a||a.feint)return 0;
+  const cue=m.cue*(a.wind/m.wind);
+  return ease((a.t-cue)/(a.wind-cue));
+}
 function resolveParries(s){
   const hits=[];
   for(const f of s.fighters){
     const punch=activePunch(f);if(!punch||punch.a.target!=='head'||punch.m.kind!=='straight')continue;
     const d=s.fighters[1-f.id],side=punch.m.side==='L'?'R':'L',p=parryStatus(d,side);
-    if(!p||p.phase!=='sweep'||p.used||deflectionRemaining(d,side)>0)continue;
-    const incoming=localToWorld(f,gloveLocal(f,punch.m.side)),sweep=localToWorld(d,gloveLocal(d,side));
-    if(Math.hypot(...incoming.map((v,i)=>v-sweep[i]))>PARRY.contactDistance)continue;
-    hits.push({who:f.id,move:punch.a.id,target:'head',type:'block',defense:'parry',damage:0,deflectSide:punch.m.side,parrySide:side,
-      reason:(side==='L'?'左手':'右手')+'のパーリングで'+p.direction+'へ外し、攻撃側の'+(punch.m.side==='L'?'左腕':'右腕')+'を弾いた'});
+    if(!p||p.phase!=='tap'||p.used||deflectionRemaining(d,side)>0)continue;
+    const progress=punchTravelProgress(f);
+    if(Math.abs(progress-PARRY.contactProgress)>PARRY.progressTolerance)continue;
+    const incoming=localToWorld(f,gloveLocal(f,punch.m.side)),parryGlove=localToWorld(d,gloveLocal(d,side));
+    if(Math.hypot(...incoming.map((v,i)=>v-parryGlove[i]))>PARRY.contactDistance)continue;
+    hits.push({who:f.id,move:punch.a.id,target:'head',type:'block',defense:'parry',damage:0,deflectSide:punch.m.side,deflectTrajectory:'parry-down',parrySide:side,punchProgress:progress,
+      reason:(side==='L'?'左手':'右手')+'で進行'+Math.round(progress*100)+'%の拳を上から小さく叩き、攻撃側の'+(punch.m.side==='L'?'左拳':'右拳')+'を下へ弾いた'});
   }
   // Both fighters' contacts are sampled before either arm is displaced.
   for(const h of hits)s.fighters[1-h.who].parry[h.parrySide].used=true;
@@ -232,7 +248,7 @@ function applyContacts(s,hits){
     if(h.type==='hit'){f.stats.hits++;d.hitFlash=1;}
     else if(h.type==='block'){d.stats.blocks++;d.blockedFlash=1;}
     else f.stats.misses++;
-    f.stats.damage+=h.damage;event(s,h);if(h.deflectSide)deflectHand(f,h.deflectSide,ARM_DEFLECT_TU);
+    f.stats.damage+=h.damage;event(s,h);if(h.deflectSide)deflectHand(f,h.deflectSide,ARM_DEFLECT_TU,h.deflectTrajectory);
   }
 }
 export function observeOpponent(s,who){
@@ -290,7 +306,7 @@ export function tick(s,dt=STEP,{cpuEnabled=true}={}){
   for(const f of s.fighters){
     for(const side of ['L','R'])f.defense[side].t=Math.min(3,f.defense[side].t+dt);
     for(const side of ['L','R']){const d=f.deflection[side];if(d){d.t+=dt;if(d.t>=d.duration)f.deflection[side]=null;}}
-    for(const side of ['L','R']){const p=f.parry[side];if(p){p.t+=dt;if(p.t>=PARRY.prepare+PARRY.sweep+PARRY.recover)f.parry[side]=null;}}
+    for(const side of ['L','R']){const p=f.parry[side];if(p){p.t+=dt;if(p.t>=PARRY.prepare+PARRY.tap+PARRY.recover)f.parry[side]=null;}}
     f.hitFlash=Math.max(0,f.hitFlash-dt*1.7);f.blockedFlash=Math.max(0,f.blockedFlash-dt*1.7);
     const regen=f.attack||f.parry.L||f.parry.R ? .24 : 2;
     f.stamina=Math.min(100,f.stamina+regen*dt);

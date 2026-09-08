@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,gloveLocal,slipOffset,localToWorld,stanceAngles,clamp} from './core.mjs?v=0.7';
+import {MOVES,gloveLocal,slipOffset,localToWorld,stanceAngles,parryStatus,clamp} from './core.mjs?v=0.12';
 
 export function createView(container){
   const scene=new THREE.Scene();scene.background=new THREE.Color('#172a2c');scene.fog=new THREE.Fog('#172a2c',5,16);
@@ -96,7 +96,9 @@ export function createView(container){
         const active=attack&&m.side===side;
         const elbow=[(shoulder[0]+hand[0])*.5+sign*(active&&m.kind==='hook'?.16:.085),Math.min(shoulder[1],hand[1])-.17,(shoulder[2]+hand[2])*.5-.09];
         setSegment(a.arms[side].upper,shoulder,elbow);setSegment(a.arms[side].forearm,elbow,hand);a.elbows[side].position.set(...elbow);
-        a.gloves[side].position.set(...hand);a.gloves[side].rotation.set(active&&m.kind==='upper'?-.8:-.15,side==='L'?-.12:.12,sign*.1);
+        const parry=parryStatus(f,side),redirected=f.deflection[side]?.trajectory==='parry-down';
+        const glovePitch=active&&m.kind==='upper'?-.8:redirected?.5:parry?.phase==='tap'?.35:parry?.phase==='prepare'?.12:-.15;
+        a.gloves[side].position.set(...hand);a.gloves[side].rotation.set(glovePitch,side==='L'?-.12:.12,sign*.1);
       }
       a.gloveMat.emissive.set(f.hitFlash>.1?'#512414':f.blockedFlash>.1?'#183b30':'#000000');
     }

@@ -8,13 +8,17 @@ test('The lab presents jab defenses as separate ordered cases',()=>{
   assert.deepEqual(LAB_CASES.map(item=>item.number),['01','02']);
 });
 
-test('Case 01 proves a right parry deflects only the attacking left arm and both sides recover',()=>{
+test('Case 01 proves a small downward right parry redirects the jab at about 70% travel',()=>{
   const run=runLabToCompletion(0);
   assert.equal(run.status,'complete');
   assert.equal(run.impact.event.defense,'parry');
+  assert.ok(run.impact.event.punchProgress>=.675&&run.impact.event.punchProgress<=.725);
   assert.equal(run.impact.attackerLeftDeflection>3.8,true);
   assert.equal(run.impact.defenderRightDeflection,0);
-  assert.equal(run.impact.defenderRightParry,'sweep');
+  assert.equal(run.impact.defenderRightParry,'tap');
+  assert.ok(run.tapStart[1]-run.impact.defenderRightGlove[1]>=.08);
+  assert.ok(run.rebound.forward>=.20);
+  assert.ok(run.rebound.downward>=.26);
   assert.equal(run.checks.length,5);
   assert.equal(run.checks.every(check=>check.pass),true);
 });

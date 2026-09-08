@@ -1,11 +1,11 @@
-import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.11';
-import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.11';
-import {LAB_CASES,createLabRun,advanceLabRun,labProgress} from './scenario-lab.mjs?v=0.11';
+import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.12';
+import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.12';
+import {LAB_CASES,createLabRun,advanceLabRun,labProgress} from './scenario-lab.mjs?v=0.12';
 const $=id=>document.getElementById(id);
 let state=createMatch(),target='head',view=null,lastFrame=0,accumulator=0,lastUi=-1,lastEvent=0,dirty=true;
 let pauseReason='再開すると、同じ姿勢から続きます。';
 const KEY_STORAGE='super-slow-boxing.keymap.v2';
-const LAB_VERDICT_STORAGE='super-slow-boxing.lab-verdicts.v1';
+const LAB_VERDICT_STORAGE='super-slow-boxing.lab-verdicts.v2';
 let keyMap=loadSavedKeys(),listeningAction=null;
 let labCaseIndex=0,labRun=null,labVerdicts=loadLabVerdicts();
 const actionButtons=[...document.querySelectorAll('[data-attack],[data-defense],[data-step],[data-slip],#feint')];
@@ -150,7 +150,7 @@ function handState(f,side){
   const remaining=deflectionRemaining(f,side);
   if(remaining>0)return '弾かれ中 '+remaining.toFixed(1)+' TU';
   const parry=parryStatus(f,side);
-  if(parry){const phase=parry.phase==='prepare'?'払いの準備':parry.phase==='sweep'?(parry.used?'払った手を外へ':parry.direction+'へ払う'):'払いから戻る';return phase+' '+parry.remaining.toFixed(1)+' TU';}
+  if(parry){const phase=parry.phase==='prepare'?'上から叩く準備':parry.phase==='tap'?(parry.used?'叩いた手を下へ':'上から小さく叩く'):'叩いた手を戻す';return phase+' '+parry.remaining.toFixed(1)+' TU';}
   if(f.attack&&MOVES[f.attack.id].side===side)return attackStatus(f).name;
   const hand=f.defense[side];
   if(hand.t<3)return DEFENSES[hand.to]+'へ移動中';
@@ -171,7 +171,7 @@ function updateLabUI(){
     const event=labRun.impact.event,remaining=deflectionRemaining(labRun.state.fighters[1],'L');
     $('lab-observed').textContent=event.reason+' / ダメージ '+event.damage;
     $('lab-after').textContent=definition.id==='jab-right-parry'
-      ? (remaining>0?'相手の左腕：弾かれ中 '+remaining.toFixed(1)+' TU / 自分の右腕：弾かれなし':'相手の左腕：復帰 / 自分の右腕：復帰')
+      ? (remaining>0?(labRun.rebound?'相手の左拳：前へ '+Math.round(labRun.rebound.forward*100)+'cm・下へ '+Math.round(labRun.rebound.downward*100)+'cm / 左腕のみ使用不能 '+remaining.toFixed(1)+' TU':'相手の左拳を下へ弾いています / 自分の右腕：弾かれなし'):'相手の左腕：復帰 / 自分の右腕：復帰')
       : '相手の左腕：弾かれなし / 自分の右腕：弾かれなし';
   }else{
     $('lab-observed').textContent=labRun?progress.label:'まだ再生していません。';$('lab-after').textContent='接触後に両者の該当腕を表示します。';
@@ -231,7 +231,7 @@ function updateUI(){
   updateLabUI();
 }
 async function boot(){
-  try{const {createView}=await import('./view.mjs?v=0.11');view=createView($('stage'));view.render(state);updateUI();}
+  try{const {createView}=await import('./view.mjs?v=0.12');view=createView($('stage'));view.render(state);updateUI();}
   catch(error){$('load-error').hidden=false;$('load-error').textContent='3D画面を起動できませんでした。WebGLに対応したブラウザで、このページを開き直してください。';$('start').textContent='3Dの起動に失敗';console.error(error);}
   requestAnimationFrame(frame);
 }
@@ -248,6 +248,6 @@ function frame(now){
 const pageParams=new URLSearchParams(location.search);
 if(pageParams.has('lab'))$('mode').value='lab';
 if(pageParams.has('test')){
-  window.__boxingTest={snapshot:()=>structuredClone(state),keymap:()=>({...keyMap}),target:()=>target,lab:()=>labRun?structuredClone({caseIndex:labRun.caseIndex,status:labRun.status,impact:labRun.impact,checks:labRun.checks}):null,advance(t,cpuEnabled=false){for(let n=0;n<Math.round(t/STEP);n++){if(isLabMode()&&labRun?.status==='running')advanceLabRun(labRun,STEP);else tick(state,STEP,{cpuEnabled});}updateUI();if(view)view.render(state);},reset(options){labRun=null;state=createMatch(options);lastEvent=0;updateUI();if(view)view.render(state);},ready:()=>!!view};
+  window.__boxingTest={snapshot:()=>structuredClone(state),keymap:()=>({...keyMap}),target:()=>target,lab:()=>labRun?structuredClone({caseIndex:labRun.caseIndex,status:labRun.status,tapStart:labRun.tapStart,impact:labRun.impact,rebound:labRun.rebound,checks:labRun.checks}):null,advance(t,cpuEnabled=false){for(let n=0;n<Math.round(t/STEP);n++){if(isLabMode()&&labRun?.status==='running')advanceLabRun(labRun,STEP);else tick(state,STEP,{cpuEnabled});}updateUI();if(view)view.render(state);},reset(options){labRun=null;state=createMatch(options);lastEvent=0;updateUI();if(view)view.render(state);},ready:()=>!!view};
 }
 buildKeySettings();updateUI();boot();
