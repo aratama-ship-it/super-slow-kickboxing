@@ -26,13 +26,14 @@ export const GUARD_IDLE=Object.freeze({x:.012,y:.018,z:.014,periods:Object.freez
 export const TARGET_HEIGHT=Object.freeze({head:1.64,jabHead:1.54,body:1.12});
 export const JAB_LEAD_FOOT=Object.freeze({forward:.10,lift:.018,kneeForwardRatio:.45,deflectReturn:1.1});
 export const JAB_BODY=Object.freeze({hipForward:.035,chestForward:.050,headForward:.045,turn:4*Math.PI/180});
+export const HEAD_BLOCK=Object.freeze({gloveX:.18,gloveY:1.67,gloveForward:.22,elbowX:.12,elbowY:1.20,elbowForward:.08,transition:3});
 export const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
 const lerp=(a,b,t)=>a+(b-a)*t;
 const ease=t=>{t=clamp(t,0,1);return t*t*(3-2*t);};
 const mix=(a,b,t)=>a.map((v,i)=>lerp(v,b[i],t));
 const TAU=Math.PI*2;
 const pairedWave=(t,periods,phase)=>.64*Math.sin(TAU*t/periods[0]+phase)+.36*Math.sin(TAU*t/periods[1]+phase*1.7+.8);
-const defense=mode=>({from:mode,to:mode,t:3});
+const defense=mode=>({from:mode,to:mode,t:HEAD_BLOCK.transition});
 function fighter(id){return {id,stance:'orthodox',z:id===0?.65:-.65,face:id===0?-1:1,hp:100,stamina:100,defense:{L:defense('block'),R:defense('block')},parry:{L:null,R:null},deflection:{L:null,R:null},attack:null,queue:null,movement:null,slip:null,hitFlash:0,blockedFlash:0,stats:{hits:0,blocks:0,misses:0,feints:0,clashes:0,deflected:0,damage:0},lastReason:''};}
 export function createMatch({seed=1729,mode='spar',duration=180}={}){
   return {phase:'ready',time:0,duration,mode,fighters:[fighter(0),fighter(1)],events:[],eventId:0,winner:null,seed:seed>>>0,
@@ -47,8 +48,8 @@ export function currentDefense(f,side){
   const p=parryStatus(f,side);
   if(p)return p.phase==='tap'&&!f.parry[side].used?'parry':'open';
   const hand=f.defense[side];
-  if(hand.t>=3)return hand.to;
-  const ratio=hand.t/3;
+  if(hand.t>=HEAD_BLOCK.transition)return hand.to;
+  const ratio=hand.t/HEAD_BLOCK.transition;
   return ratio<.25?hand.from:ratio>.85?hand.to:'open';
 }
 export function deflectionRemaining(f,side){const d=f.deflection[side];return d?Math.max(0,d.duration-d.t):0;}
@@ -135,12 +136,12 @@ export function stanceAngles(f){
 }
 const defensePoint=(f,mode,side)=>{
   const sign=side==='L'?1:-1;
+  if(mode==='block')return [sign*HEAD_BLOCK.gloveX,HEAD_BLOCK.gloveY,HEAD_BLOCK.gloveForward];
   const depth=stanceRole(f,side)==='lead'?.12:-.08;
-  if(mode==='block')return [sign*.25,1.56,.27+depth];
   if(mode==='body')return [sign*.19,1.13,.30+depth];
   return [sign*.32,1.24,.08+depth];
 };
-export function restingGlove(f,side){const hand=f.defense[side];return mix(defensePoint(f,hand.from,side),defensePoint(f,hand.to,side),ease(hand.t/3));}
+export function restingGlove(f,side){const hand=f.defense[side];return mix(defensePoint(f,hand.from,side),defensePoint(f,hand.to,side),ease(hand.t/HEAD_BLOCK.transition));}
 export function guardIdleOffset(f,side,time){
   const t=Number.isFinite(time)?time:0,phase=f.id*1.73+(side==='L'?0:.91);
   return [
@@ -319,7 +320,7 @@ function contact(s,who){
   }
   const damage=m.damage*(a.target==='body'?.85:1)*(aF.stamina<8?.85:1);
   const parry=parryStatus(dF,required);
-  const reason=handBusy?'打った手が戻っていない':handDeflected?'必要な腕が弾かれている':parry?.phase==='prepare'?'パーリングの準備が間に合わなかった':parry?.phase==='return'?'パーリングから戻っている途中':parry?'パーリングの外を通った':hand.t<3?'必要な手を移している途中':mode==='block'&&a.target==='body'?'顔のブロッキングの下を通った':mode==='body'&&a.target==='head'?'お腹ブロッキングの上を通った':'守りの外へ届いた';
+  const reason=handBusy?'打った手が戻っていない':handDeflected?'必要な腕が弾かれている':parry?.phase==='prepare'?'パーリングの準備が間に合わなかった':parry?.phase==='return'?'パーリングから戻っている途中':parry?'パーリングの外を通った':hand.t<HEAD_BLOCK.transition?'必要な手を移している途中':mode==='block'&&a.target==='body'?'顔のブロッキングの下を通った':mode==='body'&&a.target==='head'?'お腹ブロッキングの上を通った':'守りの外へ届いた';
   return {who,move:a.id,target:a.target,type:'hit',damage:Math.round(damage),drain:a.target==='body'?8:2,reason};
 }
 function applyContacts(s,hits){

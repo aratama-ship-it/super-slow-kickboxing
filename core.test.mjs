@@ -1,17 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createMatch,startMatch,pauseMatch,tick,STEP,STANCES,MOVES,ARM_DEFLECT_TU,PARRY,GUARD_IDLE,TARGET_HEIGHT,JAB_LEAD_FOOT,JAB_BODY,CPU_REACTION_DELAY,stanceRole,stanceAngles,restingGlove,gloveLocal,visualGloveLocal,punchTravelProgress,leadFootMotion,jabBodyMotion,parryStatus,currentDefense,deflectionRemaining,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,observeOpponent,distance,bodyTarget} from './core.mjs';
+import {createMatch,startMatch,pauseMatch,tick,STEP,STANCES,MOVES,ARM_DEFLECT_TU,PARRY,GUARD_IDLE,TARGET_HEIGHT,JAB_LEAD_FOOT,JAB_BODY,HEAD_BLOCK,CPU_REACTION_DELAY,stanceRole,stanceAngles,restingGlove,gloveLocal,visualGloveLocal,punchTravelProgress,leadFootMotion,jabBodyMotion,parryStatus,currentDefense,deflectionRemaining,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,observeOpponent,distance,bodyTarget} from './core.mjs';
 const run=(s,t,cpuEnabled=false)=>{for(let i=0;i<Math.round(t/STEP);i++)tick(s,STEP,{cpuEnabled});};
 const match=options=>{const s=createMatch(options);startMatch(s);return s;};
-const defend=(f,side,mode)=>{f.defense[side]={from:mode,to:mode,t:3};};
-test('Orthodox stance keeps the left hand forward and the right hand rear in every defense',()=>{
+const defend=(f,side,mode)=>{f.defense[side]={from:mode,to:mode,t:HEAD_BLOCK.transition};};
+test('Orthodox stance keeps the left hand forward and the right hand rear in body defense',()=>{
   const s=createMatch();
   assert.deepEqual(STANCES.orthodox,{name:'オーソドックス',lead:'L',rear:'R',bodyYaw:-Math.PI/4,feetYaw:-Math.PI/4});
   for(const f of s.fighters){
     assert.equal(f.stance,'orthodox');assert.equal(stanceRole(f,'L'),'lead');assert.equal(stanceRole(f,'R'),'rear');
     assert.equal(Math.abs(stanceAngles(f).bodyYaw),Math.PI/4);assert.equal(Math.abs(stanceAngles(f).feetYaw),Math.PI/4);
-    for(const mode of ['block','body']){defend(f,'L',mode);defend(f,'R',mode);assert.ok(restingGlove(f,'L')[2]>restingGlove(f,'R')[2],mode+' defense must keep the left glove forward');}
+    defend(f,'L','body');defend(f,'R','body');assert.ok(restingGlove(f,'L')[2]>restingGlove(f,'R')[2]);
   }
+});
+test('Head blocking puts both gloves on the brow and transitions there together',()=>{
+  const s=match();
+  for(const f of s.fighters){
+    assert.deepEqual(restingGlove(f,'L'),[HEAD_BLOCK.gloveX,HEAD_BLOCK.gloveY,HEAD_BLOCK.gloveForward]);
+    assert.deepEqual(restingGlove(f,'R'),[-HEAD_BLOCK.gloveX,HEAD_BLOCK.gloveY,HEAD_BLOCK.gloveForward]);
+  }
+  const f=s.fighters[0];defend(f,'L','body');defend(f,'R','body');
+  requestDefense(s,0,'L','block');requestDefense(s,0,'R','block');run(s,HEAD_BLOCK.transition/2);
+  for(const side of ['L','R']){const glove=restingGlove(f,side);assert.ok(glove[1]>1.13&&glove[1]<HEAD_BLOCK.gloveY);assert.equal(currentDefense(f,side),'open');}
+  run(s,HEAD_BLOCK.transition/2+.01);
+  assert.equal(currentDefense(f,'L'),'block');assert.equal(currentDefense(f,'R'),'block');
+  assert.deepEqual(restingGlove(f,'L'),[HEAD_BLOCK.gloveX,HEAD_BLOCK.gloveY,HEAD_BLOCK.gloveForward]);
+  assert.deepEqual(restingGlove(f,'R'),[-HEAD_BLOCK.gloveX,HEAD_BLOCK.gloveY,HEAD_BLOCK.gloveForward]);
 });
 test('Both guard hands keep a small irregular visual motion without changing collision poses',()=>{
   const s=match(),f=s.fighters[1],mechanical={L:gloveLocal(f,'L'),R:gloveLocal(f,'R')},samples={L:[],R:[]};

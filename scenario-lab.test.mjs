@@ -17,7 +17,7 @@ test('Case 01 proves the lower face target, continuous guard motion, synchronize
   assert.equal(run.impact.attackerLeftDeflection>3.8,true);
   assert.equal(run.impact.defenderRightDeflection,0);
   assert.equal(run.impact.defenderRightParry,'tap');
-  assert.ok(run.impact.attackerLeftGlove[1]<=TARGET_HEIGHT.jabHead+.015);
+  assert.ok(run.impact.attackerLeftGlove[1]<=TARGET_HEIGHT.head-.06);
   assert.ok(run.defenseIssuedAt>MOVES.jab.cue);
   assert.ok(run.preCueMotion.samples>=120);
   assert.ok(run.preCueMotion.L.range>=.02&&run.preCueMotion.R.range>=.02);

@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,visualGloveLocal,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,parryStatus,clamp} from './core.mjs?v=0.20';
+import {MOVES,HEAD_BLOCK,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,parryStatus,clamp} from './core.mjs?v=0.21';
 
 export function createView(container){
   const scene=new THREE.Scene();scene.background=new THREE.Color('#172a2c');scene.fog=new THREE.Fog('#172a2c',5,16);
@@ -98,11 +98,18 @@ export function createView(container){
         const shoulder=[shoulderX+headX*.3,1.39,shoulderAdvance+shoulderZ];
         a.shoulders[side].position.set(...shoulder);
         const active=attack&&m.side===side;
-        const elbow=[(shoulder[0]+hand[0])*.5+sign*(active&&m.kind==='hook'?.16:.085),Math.min(shoulder[1],hand[1])-.17,(shoulder[2]+hand[2])*.5-.09];
+        const openElbow=[(shoulder[0]+hand[0])*.5+sign*(active&&m.kind==='hook'?.16:.085),Math.min(shoulder[1],hand[1])-.17,(shoulder[2]+hand[2])*.5-.09];
+        const defense=f.defense[side],guardU=clamp(defense.t/HEAD_BLOCK.transition,0,1),guardEase=guardU*guardU*(3-2*guardU);
+        const fromBlock=defense.from==='block'?1:0,toBlock=defense.to==='block'?1:0;
+        const mechanical=gloveLocal(f,side),rest=restingGlove(f,side);
+        const handTravel=Math.hypot(...mechanical.map((v,index)=>v-rest[index]));
+        const blockTuck=(fromBlock+(toBlock-fromBlock)*guardEase)*(1-clamp(handTravel/.18,0,1));
+        const tuckedElbow=[sign*HEAD_BLOCK.elbowX,HEAD_BLOCK.elbowY,HEAD_BLOCK.elbowForward];
+        const elbow=openElbow.map((value,index)=>value+(tuckedElbow[index]-value)*blockTuck);
         setSegment(a.arms[side].upper,shoulder,elbow);setSegment(a.arms[side].forearm,elbow,hand);a.elbows[side].position.set(...elbow);
         const parry=parryStatus(f,side),redirected=f.deflection[side]?.trajectory==='parry-down';
-        const glovePitch=active&&m.kind==='upper'?-.8:redirected?.32:parry?.phase==='tap'?.18:parry?.phase==='prepare'?.04:-.15;
-        a.gloves[side].position.set(...hand);a.gloves[side].rotation.set(glovePitch,side==='L'?-.12:.12,sign*.1);
+        const glovePitch=active&&m.kind==='upper'?-.8:redirected?.32:parry?.phase==='tap'?.18:parry?.phase==='prepare'?.04:-.15+.12*blockTuck;
+        a.gloves[side].position.set(...hand);a.gloves[side].rotation.set(glovePitch,(side==='L'?-.12:.12)*(1-.45*blockTuck),sign*(.1-.05*blockTuck));
       }
       a.gloveMat.emissive.set(f.hitFlash>.1?'#512414':f.blockedFlash>.1?'#183b30':'#000000');
     }
@@ -120,7 +127,18 @@ export function createView(container){
     point.project(camera);
     return {x:(point.x+1)*rect.width*.5,y:(1-point.y)*rect.height*.5,visible:point.z>=-1&&point.z<=1};
   }
+  function guardWindow(index=0){
+    const rect=renderer.domElement.getBoundingClientRect();
+    const project=object=>{
+      if(!object||!rect.width||!rect.height)return null;
+      const point=object.getWorldPosition(new THREE.Vector3()).project(camera);
+      return {x:(point.x+1)*rect.width*.5,y:(1-point.y)*rect.height*.5,visible:point.z>=-1&&point.z<=1};
+    };
+    const left={glove:project(actors[index]?.gloves.L),elbow:project(actors[index]?.elbows.L)};
+    const right={glove:project(actors[index]?.gloves.R),elbow:project(actors[index]?.elbows.R)};
+    return {width:rect.width,height:rect.height,left,right,gloveGap:left.glove&&right.glove?Math.abs(left.glove.x-right.glove.x):null,elbowGap:left.elbow&&right.elbow?Math.abs(left.elbow.x-right.elbow.x):null};
+  }
   const observer=new ResizeObserver(()=>{const {width,height}=container.getBoundingClientRect();if(width&&height){camera.aspect=width/height;camera.updateProjectionMatrix();renderer.setSize(width,height,false);if(lastState)render(lastState);}});
   observer.observe(container);
-  return {render,gloveScreenPosition,canvas:renderer.domElement,dispose(){observer.disconnect();renderer.dispose();scene.traverse(o=>{o.geometry?.dispose();if(o.material){if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material.dispose();}});}};
+  return {render,gloveScreenPosition,guardWindow,canvas:renderer.domElement,dispose(){observer.disconnect();renderer.dispose();scene.traverse(o=>{o.geometry?.dispose();if(o.material){if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material.dispose();}});}};
 }
