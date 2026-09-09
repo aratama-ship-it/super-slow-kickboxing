@@ -26,7 +26,12 @@ export const GUARD_IDLE=Object.freeze({x:.012,y:.018,z:.014,periods:Object.freez
 export const TARGET_HEIGHT=Object.freeze({head:1.64,jabHead:1.54,body:1.12});
 export const JAB_LEAD_FOOT=Object.freeze({forward:.10,lift:.018,kneeForwardRatio:.45,deflectReturn:1.1});
 export const JAB_BODY=Object.freeze({hipForward:.035,chestForward:.050,headForward:.045,turn:4*Math.PI/180});
-export const HEAD_BLOCK=Object.freeze({gloveX:.18,gloveY:1.67,gloveForward:.22,elbowX:.12,elbowY:1.20,elbowForward:.08,transition:3});
+export const HEAD_BLOCK=Object.freeze({
+  gloveX:.18,gloveY:1.67,gloveForward:.22,
+  visualGloveX:.155,visualGloveY:1.67,visualGloveForward:.12,
+  visualHoldTravel:.14,visualFadeTravel:.25,
+  elbowX:.12,elbowY:1.20,elbowForward:.08,transition:3,
+});
 export const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
 const lerp=(a,b,t)=>a+(b-a)*t;
 const ease=t=>{t=clamp(t,0,1);return t*t*(3-2*t);};

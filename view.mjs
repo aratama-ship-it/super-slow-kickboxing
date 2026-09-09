@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,HEAD_BLOCK,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,parryStatus,clamp} from './core.mjs?v=0.21';
+import {MOVES,HEAD_BLOCK,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,parryStatus,clamp} from './core.mjs?v=0.22';
 
 export function createView(container){
   const scene=new THREE.Scene();scene.background=new THREE.Color('#172a2c');scene.fog=new THREE.Fog('#172a2c',5,16);
@@ -103,13 +103,21 @@ export function createView(container){
         const fromBlock=defense.from==='block'?1:0,toBlock=defense.to==='block'?1:0;
         const mechanical=gloveLocal(f,side),rest=restingGlove(f,side);
         const handTravel=Math.hypot(...mechanical.map((v,index)=>v-rest[index]));
-        const blockTuck=(fromBlock+(toBlock-fromBlock)*guardEase)*(1-clamp(handTravel/.18,0,1));
+        const blockPose=fromBlock+(toBlock-fromBlock)*guardEase;
+        const fadeU=clamp((handTravel-HEAD_BLOCK.visualHoldTravel)/HEAD_BLOCK.visualFadeTravel,0,1),fadeEase=fadeU*fadeU*(3-2*fadeU);
+        const visualBlock=blockPose*(1-fadeEase);
+        const renderedHand=[
+          hand[0]+sign*(HEAD_BLOCK.visualGloveX-HEAD_BLOCK.gloveX)*visualBlock,
+          hand[1]+(HEAD_BLOCK.visualGloveY-HEAD_BLOCK.gloveY)*visualBlock,
+          hand[2]+(HEAD_BLOCK.visualGloveForward-HEAD_BLOCK.gloveForward)*visualBlock,
+        ];
+        const blockTuck=visualBlock*(1-clamp(handTravel/.18,0,1));
         const tuckedElbow=[sign*HEAD_BLOCK.elbowX,HEAD_BLOCK.elbowY,HEAD_BLOCK.elbowForward];
         const elbow=openElbow.map((value,index)=>value+(tuckedElbow[index]-value)*blockTuck);
-        setSegment(a.arms[side].upper,shoulder,elbow);setSegment(a.arms[side].forearm,elbow,hand);a.elbows[side].position.set(...elbow);
+        setSegment(a.arms[side].upper,shoulder,elbow);setSegment(a.arms[side].forearm,elbow,renderedHand);a.elbows[side].position.set(...elbow);
         const parry=parryStatus(f,side),redirected=f.deflection[side]?.trajectory==='parry-down';
         const glovePitch=active&&m.kind==='upper'?-.8:redirected?.32:parry?.phase==='tap'?.18:parry?.phase==='prepare'?.04:-.15+.12*blockTuck;
-        a.gloves[side].position.set(...hand);a.gloves[side].rotation.set(glovePitch,(side==='L'?-.12:.12)*(1-.45*blockTuck),sign*(.1-.05*blockTuck));
+        a.gloves[side].position.set(...renderedHand);a.gloves[side].rotation.set(glovePitch,(side==='L'?-.12:.12)*(1-.45*blockTuck),sign*(.1-.05*blockTuck));
       }
       a.gloveMat.emissive.set(f.hitFlash>.1?'#512414':f.blockedFlash>.1?'#183b30':'#000000');
     }
@@ -129,14 +137,26 @@ export function createView(container){
   }
   function guardWindow(index=0){
     const rect=renderer.domElement.getBoundingClientRect();
-    const project=object=>{
-      if(!object||!rect.width||!rect.height)return null;
-      const point=object.getWorldPosition(new THREE.Vector3()).project(camera);
+    const projectPoint=point=>{
+      point.project(camera);
       return {x:(point.x+1)*rect.width*.5,y:(1-point.y)*rect.height*.5,visible:point.z>=-1&&point.z<=1};
     };
-    const left={glove:project(actors[index]?.gloves.L),elbow:project(actors[index]?.elbows.L)};
-    const right={glove:project(actors[index]?.gloves.R),elbow:project(actors[index]?.elbows.R)};
-    return {width:rect.width,height:rect.height,left,right,gloveGap:left.glove&&right.glove?Math.abs(left.glove.x-right.glove.x):null,elbowGap:left.elbow&&right.elbow?Math.abs(left.elbow.x-right.elbow.x):null};
+    const project=object=>{
+      if(!object||!rect.width||!rect.height)return null;
+      return projectPoint(object.getWorldPosition(new THREE.Vector3()));
+    };
+    const gloveProjection=object=>{
+      const glove=project(object);
+      if(!glove)return {glove,inner:null,outer:null};
+      const edges=[-.14,.14].map(x=>projectPoint(object.localToWorld(new THREE.Vector3(x,0,.025))));
+      edges.sort((a,b)=>Math.abs(a.x-rect.width*.5)-Math.abs(b.x-rect.width*.5));
+      return {glove,inner:edges[0],outer:edges[1]};
+    };
+    const left={...gloveProjection(actors[index]?.gloves.L),elbow:project(actors[index]?.elbows.L)};
+    const right={...gloveProjection(actors[index]?.gloves.R),elbow:project(actors[index]?.elbows.R)};
+    const screenHands=[left,right].sort((a,b)=>a.glove.x-b.glove.x),slitWidth=Math.max(0,screenHands[1].inner.x-screenHands[0].inner.x);
+    const opponent=actors[1-index];
+    return {width:rect.width,height:rect.height,left,right,gloveGap:left.glove&&right.glove?Math.abs(left.glove.x-right.glove.x):null,slitWidth,slitRatio:slitWidth/rect.width,opponent:{head:project(opponent?.head),chest:project(opponent?.chest)},elbowGap:left.elbow&&right.elbow?Math.abs(left.elbow.x-right.elbow.x):null};
   }
   const observer=new ResizeObserver(()=>{const {width,height}=container.getBoundingClientRect();if(width&&height){camera.aspect=width/height;camera.updateProjectionMatrix();renderer.setSize(width,height,false);if(lastState)render(lastState);}});
   observer.observe(container);

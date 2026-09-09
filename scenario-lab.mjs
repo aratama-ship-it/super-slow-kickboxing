@@ -19,7 +19,7 @@ import {
   requestDefense,
   startMatch,
   tick,
-} from './core.mjs?v=0.21';
+} from './core.mjs?v=0.22';
 
 export const LAB_CASES=Object.freeze([
   Object.freeze({
