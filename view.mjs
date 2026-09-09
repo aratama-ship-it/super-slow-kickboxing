@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,visualGloveLocal,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,parryStatus,clamp} from './core.mjs?v=0.19';
+import {MOVES,visualGloveLocal,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,parryStatus,clamp} from './core.mjs?v=0.20';
 
 export function createView(container){
   const scene=new THREE.Scene();scene.background=new THREE.Color('#172a2c');scene.fog=new THREE.Fog('#172a2c',5,16);
@@ -36,14 +36,14 @@ export function createView(container){
   const rear=mesh(new THREE.BoxGeometry(20,7,.15),material('#213634'),scene);rear.position.set(0,3,-8);
   const actors=[];
   for(let index=0;index<2;index++){
-    const root=new THREE.Group();scene.add(root);const a={root,torso:null,arms:{},gloves:{},elbows:{},shoulders:{},legs:[],head:null,chest:null};
+    const root=new THREE.Group();scene.add(root);const a={root,torso:null,upperBody:null,arms:{},gloves:{},elbows:{},shoulders:{},legs:[],head:null,chest:null};
     const player=index===0,gloveMat=(player?selfGlove:opponentGlove).clone();a.gloveMat=gloveMat;
     if(!player){
-      a.torso=new THREE.Group();root.add(a.torso);
+      a.torso=new THREE.Group();a.upperBody=new THREE.Group();root.add(a.torso,a.upperBody);
       const profile=[[.0,.18],[.06,.22],[.19,.25],[.33,.34],[.43,.33],[.48,.26]].map(([y,r])=>new THREE.Vector2(r,y));
-      a.chest=mesh(new THREE.LatheGeometry(profile,32),skin,a.torso);a.chest.position.y=.96;a.chest.scale.z=.64;
-      ellipsoid(a.torso,skin,[.14,1.3,.11],[.17,.12,.10]);ellipsoid(a.torso,skin,[-.14,1.3,.11],[.17,.12,.10]);
-      const neck=mesh(new THREE.CylinderGeometry(.075,.1,.15,20),skin,a.torso);neck.position.set(0,1.47,0);
+      a.chest=mesh(new THREE.LatheGeometry(profile,32),skin,a.upperBody);a.chest.position.y=.96;a.chest.scale.z=.64;
+      ellipsoid(a.upperBody,skin,[.14,1.3,.11],[.17,.12,.10]);ellipsoid(a.upperBody,skin,[-.14,1.3,.11],[.17,.12,.10]);
+      const neck=mesh(new THREE.CylinderGeometry(.075,.1,.15,20),skin,a.upperBody);neck.position.set(0,1.47,0);
       a.head=new THREE.Group();a.head.position.y=1.65;root.add(a.head);
       ellipsoid(a.head,skin,[0,0,0],[.15,.205,.165]);ellipsoid(a.head,skin,[0,-.13,.035],[.105,.08,.115]);
       ellipsoid(a.head,skin,[.15,-.035,0],[.025,.05,.04]);ellipsoid(a.head,skin,[-.15,-.035,0],[.025,.05,.04]);
@@ -78,22 +78,24 @@ export function createView(container){
       const f=s.fighters[i],a=actors[i];a.root.position.set(0,0,f.z);a.root.rotation.y=f.face===1?0:Math.PI;
       const attack=f.attack,m=attack?MOVES[attack.id]:null;
       const drive=attack&&!attack.feint?Math.sin(Math.PI*clamp(attack.t/(attack.wind+attack.recover),0,1))*.1:0;
-      const headX=slipOffset(f),angles=stanceAngles(f),jabFoot=leadFootMotion(f);
-      if(a.torso)a.torso.rotation.y=angles.bodyYaw;
-      if(a.head){a.head.position.x=headX;a.head.rotation.z=-headX*.3;a.head.position.z=drive*.35;a.chest.rotation.z=-headX*.12;}
+      const headX=slipOffset(f),angles=stanceAngles(f),jabFoot=leadFootMotion(f),jabBody=jabBodyMotion(f);
+      const bodyYaw=angles.bodyYaw+jabBody.turn,jabLinked=attack?.id==='jab'||jabBody.progress>0;
+      const shoulderAdvance=jabLinked?jabBody.chestForward:drive,headAdvance=jabLinked?jabBody.headForward:drive*.35;
+      if(a.torso){a.torso.position.z=jabBody.hipForward;a.torso.rotation.y=bodyYaw;a.upperBody.position.z=jabBody.chestForward;a.upperBody.rotation.y=bodyYaw;}
+      if(a.head){a.head.position.x=headX;a.head.rotation.z=-headX*.3;a.head.rotation.y=jabBody.turn*.35;a.head.position.z=headAdvance;a.chest.rotation.z=-headX*.12;}
       for(const leg of a.legs){
         const sign=leg.side==='L'?1:-1;
-        const [hipX,hipZ]=rotateXZ(sign*.15,0,angles.bodyYaw),[kneeX,kneeZ]=rotateXZ(sign*.19,.02,angles.bodyYaw),[footX,footZ]=rotateXZ(sign*.26,.03,angles.bodyYaw);
+        const [hipX,hipZ]=rotateXZ(sign*.15,0,bodyYaw),[kneeX,kneeZ]=rotateXZ(sign*.19,.02,angles.bodyYaw),[footX,footZ]=rotateXZ(sign*.26,.03,angles.bodyYaw);
         const lead=stanceRole(f,leg.side)==='lead',forward=lead?jabFoot.forward:0,lift=lead?jabFoot.lift:0;
-        const hip=[hipX,.83,hipZ],knee=[kneeX,.48+lift*.25,kneeZ+forward*.45],foot=[footX,.12+lift,footZ+forward];
+        const hip=[hipX,.83,hipZ+jabBody.hipForward],knee=[kneeX,.48+lift*.25,kneeZ+forward*.45+jabBody.hipForward*.5],foot=[footX,.12+lift,footZ+forward];
         const [toeX,toeZ]=rotateXZ(0,.06,angles.feetYaw);
         setSegment(leg.thigh,hip,knee);setSegment(leg.shin,knee,foot);leg.kneeJoint.position.set(...knee);
         leg.boot.position.set(foot[0]+toeX,.075+lift,foot[2]+toeZ);leg.boot.rotation.y=angles.feetYaw;
-        leg.hem.position.set(hip[0],.78,hip[2]);leg.hem.rotation.y=angles.bodyYaw;
+        leg.hem.position.set(hip[0],.78,hip[2]);leg.hem.rotation.y=bodyYaw;
       }
       for(const side of ['L','R']){
-        const sign=side==='L'?1:-1,hand=visualGloveLocal(f,side,s.time,{idle:idleHands}),[shoulderX,shoulderZ]=rotateXZ(sign*.3,0,angles.bodyYaw);
-        const shoulder=[shoulderX+headX*.3,1.39,drive+shoulderZ];
+        const sign=side==='L'?1:-1,hand=visualGloveLocal(f,side,s.time,{idle:idleHands}),[shoulderX,shoulderZ]=rotateXZ(sign*.3,0,bodyYaw);
+        const shoulder=[shoulderX+headX*.3,1.39,shoulderAdvance+shoulderZ];
         a.shoulders[side].position.set(...shoulder);
         const active=attack&&m.side===side;
         const elbow=[(shoulder[0]+hand[0])*.5+sign*(active&&m.kind==='hook'?.16:.085),Math.min(shoulder[1],hand[1])-.17,(shoulder[2]+hand[2])*.5-.09];
@@ -105,7 +107,8 @@ export function createView(container){
       a.gloveMat.emissive.set(f.hitFlash>.1?'#512414':f.blockedFlash>.1?'#183b30':'#000000');
     }
     const p=s.fighters[0],o=s.fighters[1];
-    camera.position.set(-slipOffset(p),1.69,p.z+.28);
+    const playerHead=jabBodyMotion(p);
+    camera.position.set(-slipOffset(p),1.69,p.z+.28+playerHead.headForward*p.face);
     camera.lookAt(0,1.35,o.z);
     renderer.render(scene,camera);
   }

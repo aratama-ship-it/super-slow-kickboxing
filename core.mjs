@@ -25,6 +25,7 @@ export const PARRY=Object.freeze({
 export const GUARD_IDLE=Object.freeze({x:.012,y:.018,z:.014,periods:Object.freeze({x:Object.freeze([1.9,.83]),y:Object.freeze([1.5,.71]),z:Object.freeze([2.1,.97])})});
 export const TARGET_HEIGHT=Object.freeze({head:1.64,jabHead:1.54,body:1.12});
 export const JAB_LEAD_FOOT=Object.freeze({forward:.10,lift:.018,kneeForwardRatio:.45,deflectReturn:1.1});
+export const JAB_BODY=Object.freeze({hipForward:.035,chestForward:.050,headForward:.045,turn:4*Math.PI/180});
 export const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
 const lerp=(a,b,t)=>a+(b-a)*t;
 const ease=t=>{t=clamp(t,0,1);return t*t*(3-2*t);};
@@ -259,6 +260,11 @@ export function leadFootMotion(f){
     return {forward:lerp(d.jabFoot.forward,0,u),lift:lerp(d.jabFoot.lift,0,u)+JAB_LEAD_FOOT.lift*.45*Math.sin(Math.PI*u),phase:'return'};
   }
   return {forward:0,lift:0,phase:'ready'};
+}
+export function jabBodyMotion(f){
+  const foot=leadFootMotion(f),progress=JAB_LEAD_FOOT.forward>0?clamp(foot.forward/JAB_LEAD_FOOT.forward,0,1):0;
+  const lead=(STANCES[f.stance]||STANCES.orthodox).lead,turn=(lead==='L'?-1:1)*JAB_BODY.turn*progress;
+  return {progress,phase:foot.phase,hipForward:JAB_BODY.hipForward*progress,chestForward:JAB_BODY.chestForward*progress,headForward:JAB_BODY.headForward*progress,turn};
 }
 function resolveParries(s){
   const hits=[];

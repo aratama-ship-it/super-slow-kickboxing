@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createMatch,startMatch,pauseMatch,tick,STEP,STANCES,MOVES,ARM_DEFLECT_TU,PARRY,GUARD_IDLE,TARGET_HEIGHT,JAB_LEAD_FOOT,CPU_REACTION_DELAY,stanceRole,stanceAngles,restingGlove,gloveLocal,visualGloveLocal,punchTravelProgress,leadFootMotion,parryStatus,currentDefense,deflectionRemaining,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,observeOpponent,distance,bodyTarget} from './core.mjs';
+import {createMatch,startMatch,pauseMatch,tick,STEP,STANCES,MOVES,ARM_DEFLECT_TU,PARRY,GUARD_IDLE,TARGET_HEIGHT,JAB_LEAD_FOOT,JAB_BODY,CPU_REACTION_DELAY,stanceRole,stanceAngles,restingGlove,gloveLocal,visualGloveLocal,punchTravelProgress,leadFootMotion,jabBodyMotion,parryStatus,currentDefense,deflectionRemaining,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,observeOpponent,distance,bodyTarget} from './core.mjs';
 const run=(s,t,cpuEnabled=false)=>{for(let i=0;i<Math.round(t/STEP);i++)tick(s,STEP,{cpuEnabled});};
 const match=options=>{const s=createMatch(options);startMatch(s);return s;};
 const defend=(f,side,mode)=>{f.defense[side]={from:mode,to:mode,t:3};};
@@ -63,6 +63,20 @@ test('A jab advances and lifts the lead foot with the glove, then returns it to 
   assert.equal(returning.phase,'return');assert.ok(returning.forward>0&&returning.forward<JAB_LEAD_FOOT.forward);assert.ok(returning.lift>0);
   run(s,1.6);assert.deepEqual(leadFootMotion(s.fighters[0]),{forward:0,lift:0,phase:'ready'});
   const cross=match();requestAttack(cross,0,'cross');run(cross,4);assert.deepEqual(leadFootMotion(cross.fighters[0]),{forward:0,lift:0,phase:'ready'});
+});
+test('A jab starts the hip, chest, head and torso turn with the lead foot, then returns the body',()=>{
+  const s=match(),f=s.fighters[0],startZ=f.z;requestAttack(s,0,'jab');run(s,2.6);
+  assert.deepEqual(jabBodyMotion(f),{progress:0,phase:'ready',hipForward:0,chestForward:0,headForward:0,turn:-0});
+  run(s,.2);const moving=jabBodyMotion(f),foot=leadFootMotion(f);
+  assert.ok(moving.progress>0);assert.ok(Math.abs(moving.progress-foot.forward/JAB_LEAD_FOOT.forward)<1e-9);
+  assert.ok(Math.abs(moving.hipForward-JAB_BODY.hipForward*moving.progress)<1e-9);assert.ok(Math.abs(moving.chestForward-JAB_BODY.chestForward*moving.progress)<1e-9);assert.ok(Math.abs(moving.headForward-JAB_BODY.headForward*moving.progress)<1e-9);assert.ok(moving.turn<0);
+  run(s,1.2);const extended=jabBodyMotion(f);assert.ok(Math.abs(extended.hipForward-JAB_BODY.hipForward)<.0001);assert.ok(Math.abs(extended.chestForward-JAB_BODY.chestForward)<.0001);assert.ok(Math.abs(extended.headForward-JAB_BODY.headForward)<.0001);assert.ok(Math.abs(Math.abs(extended.turn)-JAB_BODY.turn)<.0001);
+  run(s,2.3);assert.equal(f.z,startZ);assert.equal(jabBodyMotion(f).progress,0);
+});
+test('A parried jab returns its linked body motion with the interrupted lead foot',()=>{
+  const s=match(),f=s.fighters[0],startZ=f.z;requestAttack(s,0,'jab');run(s,3);requestDefense(s,1,'R','parry');run(s,.7);
+  const contact=jabBodyMotion(f);assert.equal(f.attack,null);assert.ok(contact.hipForward>JAB_BODY.hipForward*.7);assert.ok(contact.chestForward>JAB_BODY.chestForward*.7);
+  run(s,.5);assert.ok(jabBodyMotion(f).progress>0);run(s,.7);assert.equal(jabBodyMotion(f).progress,0);assert.equal(f.z,startZ);
 });
 test('A parried jab returns the lead foot smoothly after the attacking arm is deflected',()=>{
   const s=match();requestAttack(s,0,'jab');run(s,3);requestDefense(s,1,'R','parry');run(s,.7);

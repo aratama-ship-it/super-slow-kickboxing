@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {MOVES,TARGET_HEIGHT} from './core.mjs';
+import {JAB_BODY,MOVES,TARGET_HEIGHT} from './core.mjs';
 import {LAB_CASES,runLabToCompletion} from './scenario-lab.mjs';
 
 test('The lab presents jab defenses as separate ordered cases',()=>{
@@ -9,7 +9,7 @@ test('The lab presents jab defenses as separate ordered cases',()=>{
   assert.deepEqual(LAB_CASES.map(item=>item.number),['01','02']);
 });
 
-test('Case 01 proves the lower face target, continuous guard motion, synchronized footwork and the 80% parry',()=>{
+test('Case 01 proves the lower face target, continuous guard motion, synchronized foot and body work, and the 80% parry',()=>{
   const run=runLabToCompletion(0);
   assert.equal(run.status,'complete');
   assert.equal(run.impact.event.defense,'parry');
@@ -22,14 +22,20 @@ test('Case 01 proves the lower face target, continuous guard motion, synchronize
   assert.ok(run.preCueMotion.samples>=120);
   assert.ok(run.preCueMotion.L.range>=.02&&run.preCueMotion.R.range>=.02);
   assert.equal(run.punchStartAt,run.leadFootStartAt);
+  assert.equal(run.punchStartAt,run.bodyStartAt);
   assert.ok(run.leadFootPeak>=.075);
+  assert.ok(run.bodyPeak.hip>=JAB_BODY.hipForward*.75);
+  assert.ok(run.bodyPeak.chest>=JAB_BODY.chestForward*.75);
+  assert.ok(run.bodyPeak.head>=JAB_BODY.headForward*.75);
+  assert.ok(run.bodyPeak.turn>=JAB_BODY.turn*.75);
+  assert.ok(run.impact.attackerBody.progress>=.75);
   assert.ok(run.impact.attackerLeadFoot.forward>=.075&&run.impact.attackerLeadFoot.forward<=.09);
   assert.ok(run.impact.attackerLeadFoot.lift>0);
   assert.ok(Math.abs(run.parryStart[0]-run.impact.defenderRightGlove[0])<.01);
   assert.ok(run.tapStart[1]-run.impact.defenderRightGlove[1]>=.04);
   assert.ok(run.rebound.forward>=.12);
   assert.ok(run.rebound.downward>=.16);
-  assert.equal(run.checks.length,8);
+  assert.equal(run.checks.length,9);
   assert.equal(run.checks.every(check=>check.pass),true);
 });
 
