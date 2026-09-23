@@ -1,12 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,PARRY,STEP,createMatch,startMatch,tick,requestAttack,requestDefense,requestFeint,gloveLocal,restingGlove} from './core.mjs';
+import {MOVES,PARRY,STEP,createMatch,startMatch,tick,requestAttack,requestDefense,requestFeint} from './core.mjs';
 import {handTurnAmount,gloveOrientation,forearmOrientation} from './hand-orientation.mjs';
 
 const orientation=(f,side)=>gloveOrientation(side,handTurnAmount({
-  travel:Math.hypot(...gloveLocal(f,side).map((v,i)=>v-restingGlove(f,side)[i])),
-  active:!!f.attack&&MOVES[f.attack.id].side===side,deflected:!!f.deflection[side],parry:f.parry[side],...PARRY,
+  attack:f.attack&&MOVES[f.attack.id].side===side?f.attack:null,deflection:f.deflection[side],parry:f.parry[side],...PARRY,
 }));
 const palm=q=>new THREE.Vector3(0,0,-1).applyQuaternion(q);
 const near=(actual,expected)=>assert(actual.distanceTo(new THREE.Vector3(...expected))<1e-6);
@@ -29,6 +28,22 @@ test('All six punches turn palm down and return smoothly, preserving the other h
 test('Jab has no new rotation tell before its existing extension cue',()=>{
   const s=match(),f=s.fighters[0];requestAttack(s,0,'jab');
   run(s,MOVES.jab.cue-STEP,()=>near(palm(orientation(f,'L')),[-1,0,0]));
+});
+test('Every punch keeps turning through its entire forward stroke, including fatigue',()=>{
+  for(const [id,move] of Object.entries(MOVES))for(const target of ['head','body'])for(const stamina of [100,25]){
+    const s=match(),f=s.fighters[0];f.stamina=stamina;assert(requestAttack(s,0,id,target).ok);
+    const a=f.attack,cue=move.cue*(a.wind/move.wind),rest=orientation(f,move.side),end=gloveOrientation(move.side,1);
+    a.t=cue*.9;assert(rest.angleTo(orientation(f,move.side))<1e-6,'chambering must not finish the twist');
+    let previous=0;
+    for(const phase of [.25,.5,.75,.9]){
+      a.t=cue+(a.wind-cue)*phase;
+      const q=orientation(f,move.side),turned=rest.angleTo(q)/rest.angleTo(end);
+      assert(turned>previous&&turned<.995,`${id} must still be turning at ${phase}`);
+      if(phase===.5)assert(turned>.4&&turned<.6,'halfway extension must have an intermediate wrist angle');
+      previous=turned;
+    }
+    a.t=a.wind;near(palm(orientation(f,move.side)),[0,-1,0]);
+  }
 });
 test('Left and right parries turn down during preparation, hold, then return inward',()=>{
   for(const side of ['L','R']){

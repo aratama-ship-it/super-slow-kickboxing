@@ -1,7 +1,7 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,HEAD_BLOCK,PARRY,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,parryStatus,clamp} from './core.mjs?v=0.28';
-import {REFERENCE_LOOK as LOOK,bodyRhythm,addReferenceArena,addReferenceGlove} from './reference-look.mjs?v=0.28';
-import {HAND_TURN,handTurnAmount,gloveOrientation,forearmOrientation} from './hand-orientation.mjs?v=0.28';
+import {MOVES,HEAD_BLOCK,PARRY,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,parryStatus,clamp} from './core.mjs?v=0.29';
+import {REFERENCE_LOOK as LOOK,bodyRhythm,addReferenceArena,addReferenceGlove} from './reference-look.mjs?v=0.29';
+import {HAND_TURN,handTurnAmount,gloveOrientation,forearmOrientation} from './hand-orientation.mjs?v=0.29';
 
 export function createView(container,{reference=false,cameraMotion=true}={}){
   const background=reference?'#10151e':'#172a2c';
@@ -141,7 +141,7 @@ export function createView(container,{reference=false,cameraMotion=true}={}){
         let glovePitch=active&&m.kind==='upper'?-.8:redirected?.32:parry?.phase==='tap'?.18:parry?.phase==='prepare'?.04:-.15+.12*blockTuck;
         a.gloves[side].position.set(...renderedHand);a.gloves[side].rotation.set(glovePitch,(side==='L'?-.12:.12)*(1-.45*blockTuck),sign*(.1-.05*blockTuck));
         if(reference){
-          const turn=handTurnAmount({travel:handTravel,active,deflected:!!f.deflection[side],parry:f.parry[side],...PARRY});
+          const turn=handTurnAmount({attack:active?attack:null,deflection:f.deflection[side],parry:f.parry[side],...PARRY});
           a.gloves[side].quaternion.copy(gloveOrientation(side,turn));
           const palm=new THREE.Vector3(0,0,-1).applyQuaternion(a.gloves[side].quaternion);
           const wrist=new THREE.Vector3(...HAND_TURN.wrist).applyQuaternion(a.gloves[side].quaternion).add(new THREE.Vector3(...renderedHand)).toArray();

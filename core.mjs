@@ -228,7 +228,9 @@ export function bodyTarget(f,target,moveId=null){return localToWorld(f,[slipOffs
 function deflectHand(f,side,duration,trajectory='outward',time=0){
   const from=gloveLocal(f,side).slice(),visual=visualGloveLocal(f,side,time);
   const jabFoot=f.attack?.id==='jab'?leadFootMotion(f):null;
-  f.deflection[side]={t:0,duration,from,trajectory,jabFoot,visualOffset:visual.map((v,i)=>v-from[i])};
+  // Retain the interrupted phase for continuous render-only wrist rotation.
+  const interruptedAttack=f.attack&&MOVES[f.attack.id].side===side?{...f.attack}:null;
+  f.deflection[side]={t:0,duration,from,trajectory,jabFoot,interruptedAttack,visualOffset:visual.map((v,i)=>v-from[i])};
   f.parry[side]=null;
   if(f.attack&&MOVES[f.attack.id].side===side)f.attack=null;
   if(f.queue&&MOVES[f.queue.id].side===side)f.queue=null;

@@ -1,17 +1,27 @@
 import * as THREE from './vendor/three.module.min.js';
+import {MOVES} from './core.mjs?v=0.29';
 
 // Glove geometry: +Y runs from cuff to knuckles, -Z is the palm surface.
-export const HAND_TURN=Object.freeze({punchTravel:.32,forearmWidth:.94,forearmDepth:1.03,wrist:Object.freeze([0,-.197,-.015])});
+export const HAND_TURN=Object.freeze({forearmWidth:.94,forearmDepth:1.03,wrist:Object.freeze([0,-.197,-.015])});
 const smooth=value=>{const u=Math.max(0,Math.min(1,value));return u*u*(3-2*u);};
 const down=new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(
   new THREE.Vector3(-1,0,0),new THREE.Vector3(0,0,1),new THREE.Vector3(0,1,0)));
 
-export function handTurnAmount({travel=0,active=false,deflected=false,parry=null,prepare=.18,tap=.55,recover=.9}){
+function punchTurn(attack){
+  if(!attack)return 0;
+  if(attack.feint)return punchTurn({...attack,feint:false,t:attack.feintStart})*(1-smooth((attack.t-attack.feintStart)/attack.feintDuration));
+  if(attack.t>=attack.wind)return 1-smooth((attack.t-attack.wind)/attack.recover);
+  const move=MOVES[attack.id],cue=move.cue*(attack.wind/move.wind);
+  return smooth((attack.t-cue)/(attack.wind-cue));
+}
+
+export function handTurnAmount({attack=null,deflection=null,parry=null,prepare=.18,tap=.55,recover=.9}){
+  if(deflection)return punchTurn(deflection.interruptedAttack)*(1-smooth(deflection.t/deflection.duration));
   if(parry){
     if(parry.t<prepare)return smooth(parry.t/prepare);
     return 1-smooth((parry.t-prepare-tap)/recover);
   }
-  return active||deflected?smooth(travel/HAND_TURN.punchTravel):0;
+  return punchTurn(attack);
 }
 
 export function gloveOrientation(side,amount){
