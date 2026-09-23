@@ -17,6 +17,18 @@ const continuous=(f,side)=>{let prev=orientation(f,side);return ()=>{const next=
 test('Both fighters guard with palms facing each other',()=>{
   for(const f of createMatch().fighters){near(palm(orientation(f,'L')),[-1,0,0]);near(palm(orientation(f,'R')),[1,0,0]);}
 });
+test('Opponent presents the little-finger edges, with each palm turned toward the other hand',()=>{
+  for(const f of createMatch().fighters){
+    const root=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),f.face===1?0:Math.PI);
+    for(const side of ['L','R']){
+      const q=root.clone().multiply(orientation(f,side));
+      const pinky=new THREE.Vector3(side==='L'?-1:1,0,0).applyQuaternion(q);
+      const worldPalm=palm(q);
+      assert(pinky.z*f.face>.999,`${f.id} ${side} little-finger edge must face the opponent`);
+      assert(worldPalm.x*f.face*(side==='L'?-1:1)>.999,`${f.id} ${side} palm must face inward`);
+    }
+  }
+});
 test('Glove thumbs match the hand: inward when palm-down, towards the wearer in guard',()=>{
   for(const side of ['L','R']){
     const glove=new THREE.Group(),material=new THREE.MeshStandardMaterial();

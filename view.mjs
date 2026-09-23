@@ -1,7 +1,7 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,HEAD_BLOCK,PARRY,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,parryStatus,clamp} from './core.mjs?v=0.37';
-import {REFERENCE_LOOK as LOOK,bodyRhythm,addReferenceArena,addReferenceGlove} from './reference-look.mjs?v=0.37';
-import {HAND_TURN,handTurnAmount,gloveOrientation,forearmOrientation,parryArmPose,parryTapAmount} from './hand-orientation.mjs?v=0.37';
+import {MOVES,HEAD_BLOCK,PARRY,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,parryStatus,clamp} from './core.mjs?v=0.38';
+import {REFERENCE_LOOK as LOOK,bodyRhythm,addReferenceArena,addReferenceGlove} from './reference-look.mjs?v=0.38';
+import {HAND_TURN,handTurnAmount,gloveOrientation,forearmOrientation,parryArmPose,parryTapAmount} from './hand-orientation.mjs?v=0.38';
 
 export function createView(container,{reference=false,cameraMotion=true}={}){
   const background=reference?'#10151e':'#172a2c';
@@ -74,7 +74,7 @@ export function createView(container,{reference=false,cameraMotion=true}={}){
       }
       a.elbows[side]=ellipsoid(root,seams,[0,0,0],[.067,.067,.067]);
       const glove=new THREE.Group();root.add(glove);a.gloves[side]=glove;
-      if(reference){addReferenceGlove(glove,gloveMat,ivory,side);continue;}
+      if(reference){addReferenceGlove(glove,gloveMat,ivory,side,{opponent:!player});continue;}
       ellipsoid(glove,gloveMat,[0,0,.025],[.13,.145,.16]);
       ellipsoid(glove,gloveMat,[side==='L'?-.075:.075,-.035,.055],[.065,.09,.105]);
       const cuff=mesh(new THREE.CylinderGeometry(.084,.077,.1,20),gloveMat,glove);cuff.position.set(0,-.13,-.03);

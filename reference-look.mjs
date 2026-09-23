@@ -63,7 +63,7 @@ export function addReferenceArena(scene){
   }
 }
 
-export function addReferenceGlove(group,material,tapeMaterial,side){
+export function addReferenceGlove(group,material,tapeMaterial,side,{opponent=false}={}){
   const sign=side==='L'?1:-1;
   const geometry=new THREE.SphereGeometry(1,40,28);
   const position=geometry.attributes.position;
@@ -82,7 +82,19 @@ export function addReferenceGlove(group,material,tapeMaterial,side){
     object.castShadow=true;object.receiveShadow=true;group.add(object);return object;
   };
   const leather=material;leather.roughness=.38;
-  part(geometry,leather,[0,.012,.015],[.13,.155,.14]);
+  // The opponent is seen from the front: a thinner palm-to-back profile makes
+  // the little-finger edge read as an edge instead of another broad back face.
+  part(geometry,leather,[0,.012,.015],[.13,.155,opponent ? .105 : .14]);
+  if(opponent){
+    const edge=leather.clone();edge.color.multiplyScalar(.6);edge.roughness=.55;
+    const x=-sign;
+    const curve=new THREE.CatmullRomCurve3([
+      new THREE.Vector3(x*.104,-.1,.015),new THREE.Vector3(x*.129,-.02,.015),
+      new THREE.Vector3(x*.127,.065,.015),new THREE.Vector3(x*.103,.125,.015),
+    ]);
+    const seam=part(new THREE.TubeGeometry(curve,16,.0025,6,false),edge,[0,0,0],[1,1,1]);
+    seam.name='pinky-edge-seam';
+  }
   // Local +Y is cuff-to-knuckles and -Z is the palm: mirror the thumb,
   // so it faces the body centre when the palm rotates towards the floor.
   const thumb=part(new THREE.SphereGeometry(1,28,20),leather,[sign*.091,-.047,-.008],[.059,.094,.072]);
