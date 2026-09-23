@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {JAB_BODY,MOVES,TARGET_HEIGHT} from './core.mjs';
-import {LAB_CASES,runLabToCompletion} from './scenario-lab.mjs';
+import {JAB_BODY,MOVES,STEP,TARGET_HEIGHT,gloveLocal} from './core.mjs';
+import {LAB_CASES,advanceLabRun,createLabRun,runLabToCompletion} from './scenario-lab.mjs';
 
 test('The lab presents jab defenses as separate ordered cases',()=>{
   assert.equal(LAB_CASES.length,3);
@@ -50,9 +50,19 @@ test('Case 02 proves a right block absorbs the jab without deflecting either arm
   assert.equal(run.checks.every(check=>check.pass),true);
 });
 
-test('Case 03 isolates the left head guard and shows the current right-hand-only jab coverage',()=>{
-  const run=runLabToCompletion(2);
+test('Case 03 moves only the left glove from body to head before the jab arrives',()=>{
+  const run=createLabRun(2),player=run.state.fighters[0];
+  const startLeft=gloveLocal(player,'L').slice(),startRight=gloveLocal(player,'R').slice();
+  while(run.state.time<2.5)advanceLabRun(run,STEP);
+  const midLeft=gloveLocal(player,'L'),midRight=gloveLocal(player,'R');
+  assert.ok(midLeft[1]>startLeft[1]+.2&&midLeft[1]<startLeft[1]+.5);
+  assert.deepEqual(midRight,startRight);
+  while(run.status==='running')advanceLabRun(run,STEP);
   assert.equal(run.status,'complete');
+  assert.ok(run.leftBlockIssuedAt>=1&&run.leftBlockIssuedAt<1+STEP);
+  assert.ok(run.leftBlockMidpointY>startLeft[1]+.2&&run.leftBlockMidpointY<run.impact.defenderLeftGlove[1]-.2);
+  assert.ok(run.impact.defenderLeftGlove[1]>startLeft[1]+.5);
+  assert.deepEqual(run.impact.defenderRightGlove,startRight);
   assert.equal(run.impact.defenderLeftDefense,'block');
   assert.equal(run.impact.defenderRightDefense,'body');
   assert.equal(run.impact.event.type,'hit');

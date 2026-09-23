@@ -1,6 +1,6 @@
 import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.41';
 import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.41';
-import {LAB_CASES,createLabRun,advanceLabRun,labProgress} from './scenario-lab.mjs?v=0.41';
+import {LAB_CASES,createLabRun,advanceLabRun,labProgress} from './scenario-lab.mjs?v=0.42';
 const $=id=>document.getElementById(id);
 let state=createMatch(),target='head',view=null,lastFrame=0,accumulator=0,lastUi=-1,lastEvent=0,dirty=true;
 let pauseReason='再開すると、同じ姿勢から続きます。';
@@ -208,7 +208,7 @@ function replaceTextList(element,items){
 function updateLabUI(){
   const panel=$('scenario-lab');panel.hidden=!isLabMode();$('lab-view-label').hidden=panel.hidden;if(panel.hidden)return;
   const definition=LAB_CASES[labCaseIndex],verdict=labVerdicts[definition.id],progress=labProgress(labRun);
-  $('lab-view-label').textContent='ケース'+definition.number+'｜'+(definition.rightGuard==='body'?'左手 顔・右手 腹':definition.defense);
+  $('lab-view-label').textContent='ケース'+definition.number+'｜'+(definition.viewLabel||definition.defense);
   $('lab-count').textContent=definition.number+' / '+String(LAB_CASES.length).padStart(2,'0');
   $('lab-title').textContent=definition.title;$('lab-question').textContent=definition.question;$('lab-defense').textContent=definition.defense;
   $('lab-expected').textContent=definition.expected;replaceTextList($('lab-conditions'),definition.conditions);
@@ -220,7 +220,7 @@ function updateLabUI(){
     $('lab-after').textContent=definition.id==='jab-right-parry'
       ? (remaining>0?(labRun.rebound?'相手の左前足：約'+Math.round(labRun.impact.attackerLeadFoot.forward*100)+'cm前進 / 腰：約'+Math.round(labRun.impact.attackerBody.hipForward*100)+'cm前進 / 左拳：前へ '+Math.round(labRun.rebound.forward*100)+'cm・下へ '+Math.round(labRun.rebound.downward*100)+'cm / 左腕のみ使用不能 '+remaining.toFixed(1)+' TU':'相手の左前足・腰・上体と左拳が前進中 / 自分の右腕：弾かれなし'):'相手の左腕・左前足・足腰：復帰 / 自分の右腕：復帰')
       : definition.id==='jab-left-block'
-        ? '相手の左腕：弾かれなし / 自分の左右の腕：弾かれなし / 左手は顔・右手は腹'
+        ? '相手の左腕：弾かれなし / 自分の左右の腕：弾かれなし / 左手が顔へ上がり、右手は腹のまま'
         : '相手の左腕：弾かれなし / 自分の右腕：弾かれなし';
   }else{
     $('lab-observed').textContent=labRun?progress.label:'まだ再生していません。';$('lab-after').textContent=definition.id==='jab-right-parry'?'接触後に両者の該当腕と相手の左前足・足腰を表示します。':'接触後に両者の該当腕を表示します。';
@@ -339,6 +339,6 @@ if(pageParams.has('lab')){
   syncLabUrl();
 }
 if(pageParams.has('test')){
-  window.__boxingTest={playback:()=>({paused:labPaused,remaining:labReplayRemaining,completed:!!labLastComplete}),elapse(seconds){for(let t=0;t<seconds;t+=.01)advancePlayback(Math.min(.01,seconds-t));if(view)view.render(state);updateUI();},snapshot:()=>structuredClone(state),keymap:()=>({...keyMap}),target:()=>target,lab:()=>labRun?structuredClone({caseIndex:labRun.caseIndex,status:labRun.status,defenseIssuedAt:labRun.defenseIssuedAt,parryStart:labRun.parryStart,tapStart:labRun.tapStart,preCueMotion:labRun.preCueMotion,punchStartAt:labRun.punchStartAt,leadFootStartAt:labRun.leadFootStartAt,bodyStartAt:labRun.bodyStartAt,leadFootPeak:labRun.leadFootPeak,bodyPeak:labRun.bodyPeak,impact:labRun.impact,rebound:labRun.rebound,checks:labRun.checks}):null,parryEffect:()=>parryEffectTarget&&view?{...parryEffectTarget,anchor:view.gloveScreenPosition(parryEffectTarget.fighter,parryEffectTarget.side)}:null,presentation:()=>view?.presentationState(),guardWindow:(fighter=0)=>view?.guardWindow(fighter)||null,advance(t,cpuEnabled=false){for(let n=0;n<Math.round(t/STEP);n++){if(isLabMode()&&labRun?.status==='running')advanceLabRun(labRun,STEP);else tick(state,STEP,{cpuEnabled});}rememberLabCompletion();if(view)view.render(state);updateUI();positionParryEffect();},reset(options){labRun=null;labPaused=false;labReplayRemaining=null;labLastComplete=null;state=createMatch(options);lastEvent=0;if(view)view.render(state);updateUI();positionParryEffect();},ready:()=>!!view};
+  window.__boxingTest={playback:()=>({paused:labPaused,remaining:labReplayRemaining,completed:!!labLastComplete}),elapse(seconds){for(let t=0;t<seconds;t+=.01)advancePlayback(Math.min(.01,seconds-t));if(view)view.render(state);updateUI();},snapshot:()=>structuredClone(state),keymap:()=>({...keyMap}),target:()=>target,lab:()=>labRun?structuredClone({caseIndex:labRun.caseIndex,status:labRun.status,defenseIssuedAt:labRun.defenseIssuedAt,leftBlockIssuedAt:labRun.leftBlockIssuedAt,leftBlockStart:labRun.leftBlockStart,rightGloveStart:labRun.rightGloveStart,parryStart:labRun.parryStart,tapStart:labRun.tapStart,preCueMotion:labRun.preCueMotion,punchStartAt:labRun.punchStartAt,leadFootStartAt:labRun.leadFootStartAt,bodyStartAt:labRun.bodyStartAt,leadFootPeak:labRun.leadFootPeak,bodyPeak:labRun.bodyPeak,impact:labRun.impact,rebound:labRun.rebound,checks:labRun.checks}):null,parryEffect:()=>parryEffectTarget&&view?{...parryEffectTarget,anchor:view.gloveScreenPosition(parryEffectTarget.fighter,parryEffectTarget.side)}:null,presentation:()=>view?.presentationState(),guardWindow:(fighter=0)=>view?.guardWindow(fighter)||null,advance(t,cpuEnabled=false){for(let n=0;n<Math.round(t/STEP);n++){if(isLabMode()&&labRun?.status==='running')advanceLabRun(labRun,STEP);else tick(state,STEP,{cpuEnabled});}rememberLabCompletion();if(view)view.render(state);updateUI();positionParryEffect();},reset(options){labRun=null;labPaused=false;labReplayRemaining=null;labLastComplete=null;state=createMatch(options);lastEvent=0;if(view)view.render(state);updateUI();positionParryEffect();},ready:()=>!!view};
 }
 buildKeySettings();updateUI();boot();
