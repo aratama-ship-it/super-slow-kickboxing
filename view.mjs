@@ -1,27 +1,31 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,HEAD_BLOCK,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,parryStatus,clamp} from './core.mjs?v=0.22';
+import {MOVES,HEAD_BLOCK,PARRY,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,parryStatus,clamp} from './core.mjs?v=0.23';
+import {REFERENCE_LOOK as LOOK,bodyRhythm,addReferenceArena,addReferenceGlove} from './reference-look.mjs?v=0.23';
 
-export function createView(container){
-  const scene=new THREE.Scene();scene.background=new THREE.Color('#172a2c');scene.fog=new THREE.Fog('#172a2c',5,16);
-  const camera=new THREE.PerspectiveCamera(78,1,.04,40);
+export function createView(container,{reference=false,cameraMotion=true}={}){
+  const background=reference?'#10151e':'#172a2c';
+  const scene=new THREE.Scene();scene.background=new THREE.Color(background);scene.fog=new THREE.Fog(background,reference?4:5,reference?13:16);
+  const camera=new THREE.PerspectiveCamera(reference?LOOK.fov:78,1,reference?.025:.04,40);
   const renderer=new THREE.WebGLRenderer({antialias:true,alpha:false});
   const idleHands=!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   renderer.setPixelRatio(Math.min(devicePixelRatio,1.5));renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
   renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.15;
   renderer.domElement.setAttribute('aria-label','一人称のボクシング。赤い自分のグローブと、青いグローブの相手を表示');
   renderer.domElement.setAttribute('role','img');container.append(renderer.domElement);
-  scene.add(new THREE.HemisphereLight('#f1eee1','#354744',2.2));
+  scene.add(new THREE.HemisphereLight('#f1eee1',reference?'#202d43':'#354744',reference?1.3:2.2));
   const key=new THREE.DirectionalLight('#fff2d7',3.8);key.position.set(-3,6,3);key.castShadow=true;key.shadow.mapSize.set(1024,1024);
   Object.assign(key.shadow.camera,{left:-4,right:4,top:4,bottom:-4,near:.1,far:14});key.shadow.bias=-.001;scene.add(key);
   const fill=new THREE.DirectionalLight('#bdd7d3',1.6);fill.position.set(3,3,-4);scene.add(fill);
   const material=(color,extra={})=>new THREE.MeshStandardMaterial({color,roughness:.73,metalness:.02,...extra});
-  const skin=material('#c6c2b1'),seams=material('#8d978c'),red=material('#a33c2c'),green=material('#347b68'),selfGlove=material('#c74a3a'),opponentGlove=material('#3f7fbe'),ivory=material('#ece9dd'),shorts=material('#4b605b'),boots=material('#253b3a');
+  const skin=material('#c6c2b1'),seams=material('#8d978c'),red=material('#a33c2c'),green=material('#347b68'),selfGlove=material('#c74a3a'),opponentGlove=material('#3f7fbe'),ivory=material('#ece9dd'),shorts=material(reference?'#263b52':'#4b605b'),boots=material('#253b3a');
   const sphere=new THREE.SphereGeometry(1,24,16),cylinder=new THREE.CylinderGeometry(1,1,1,16);
   const mesh=(geometry,mat,parent)=>{const m=new THREE.Mesh(geometry,mat);m.castShadow=true;m.receiveShadow=true;parent.add(m);return m;};
   const ellipsoid=(parent,mat,xyz,scale)=>{const m=mesh(sphere,mat,parent);m.position.set(...xyz);m.scale.set(...scale);return m;};
   const segment=(parent,mat,r1,r2)=>mesh(new THREE.CylinderGeometry(r2,r1,1,16),mat,parent);
   const setSegment=(m,a,b)=>{const va=new THREE.Vector3(...a),vb=new THREE.Vector3(...b),d=vb.clone().sub(va);m.position.copy(va.add(vb).multiplyScalar(.5));m.scale.y=d.length();m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize());};
   const rotateXZ=(x,z,yaw)=>[x*Math.cos(yaw)+z*Math.sin(yaw),-x*Math.sin(yaw)+z*Math.cos(yaw)];
+  if(reference)addReferenceArena(scene);
+  else{
   const floor=mesh(new THREE.PlaneGeometry(24,24),material('#354e49'),scene);floor.rotation.x=-Math.PI/2;floor.position.y=-.025;floor.castShadow=false;
   const mat=mesh(new THREE.BoxGeometry(6.4,.08,6.4),material('#587067'),scene);mat.position.y=-.05;mat.castShadow=false;
   const ring=mesh(new THREE.RingGeometry(.8,.812,96),ivory,scene);ring.rotation.x=-Math.PI/2;ring.position.y=.001;ring.castShadow=false;
@@ -34,6 +38,7 @@ export function createView(container){
     const beam=mesh(new THREE.BoxGeometry(.12,6,.12),material('#28413f'),scene);beam.position.set(x,2.7,-7);
   }
   const rear=mesh(new THREE.BoxGeometry(20,7,.15),material('#213634'),scene);rear.position.set(0,3,-8);
+  }
   const actors=[];
   for(let index=0;index<2;index++){
     const root=new THREE.Group();scene.add(root);const a={root,torso:null,upperBody:null,arms:{},gloves:{},elbows:{},shoulders:{},legs:[],head:null,chest:null};
@@ -64,6 +69,7 @@ export function createView(container){
       const upper=segment(root,skin,.095,.075),forearm=segment(root,skin,.08,.055);a.arms[side]={upper,forearm};
       a.elbows[side]=ellipsoid(root,seams,[0,0,0],[.067,.067,.067]);
       const glove=new THREE.Group();root.add(glove);a.gloves[side]=glove;
+      if(reference){addReferenceGlove(glove,gloveMat,ivory,side);continue;}
       ellipsoid(glove,gloveMat,[0,0,.025],[.13,.145,.16]);
       ellipsoid(glove,gloveMat,[side==='L'?-.075:.075,-.035,.055],[.065,.09,.105]);
       const cuff=mesh(new THREE.CylinderGeometry(.084,.077,.1,20),gloveMat,glove);cuff.position.set(0,-.13,-.03);
@@ -79,15 +85,16 @@ export function createView(container){
       const attack=f.attack,m=attack?MOVES[attack.id]:null;
       const drive=attack&&!attack.feint?Math.sin(Math.PI*clamp(attack.t/(attack.wind+attack.recover),0,1))*.1:0;
       const headX=slipOffset(f),angles=stanceAngles(f),jabFoot=leadFootMotion(f),jabBody=jabBodyMotion(f);
+      const rhythm=bodyRhythm(s.time,i,reference&&idleHands);
       const bodyYaw=angles.bodyYaw+jabBody.turn,jabLinked=attack?.id==='jab'||jabBody.progress>0;
       const shoulderAdvance=jabLinked?jabBody.chestForward:drive,headAdvance=jabLinked?jabBody.headForward:drive*.35;
-      if(a.torso){a.torso.position.z=jabBody.hipForward;a.torso.rotation.y=bodyYaw;a.upperBody.position.z=jabBody.chestForward;a.upperBody.rotation.y=bodyYaw;}
-      if(a.head){a.head.position.x=headX;a.head.rotation.z=-headX*.3;a.head.rotation.y=jabBody.turn*.35;a.head.position.z=headAdvance;a.chest.rotation.z=-headX*.12;}
+      if(a.torso){a.torso.position.set(rhythm.x*.5,rhythm.y*.4,jabBody.hipForward);a.torso.rotation.y=bodyYaw;a.upperBody.position.set(rhythm.x,rhythm.y,jabBody.chestForward);a.upperBody.rotation.set(0,bodyYaw,rhythm.roll);}
+      if(a.head){a.head.position.set(headX+rhythm.x,1.65+rhythm.y,headAdvance);a.head.rotation.z=-headX*.3+rhythm.roll;a.head.rotation.y=jabBody.turn*.35;a.chest.rotation.z=-headX*.12;}
       for(const leg of a.legs){
         const sign=leg.side==='L'?1:-1;
         const [hipX,hipZ]=rotateXZ(sign*.15,0,bodyYaw),[kneeX,kneeZ]=rotateXZ(sign*.19,.02,angles.bodyYaw),[footX,footZ]=rotateXZ(sign*.26,.03,angles.bodyYaw);
         const lead=stanceRole(f,leg.side)==='lead',forward=lead?jabFoot.forward:0,lift=lead?jabFoot.lift:0;
-        const hip=[hipX,.83,hipZ+jabBody.hipForward],knee=[kneeX,.48+lift*.25,kneeZ+forward*.45+jabBody.hipForward*.5],foot=[footX,.12+lift,footZ+forward];
+        const hip=[hipX+rhythm.x*.5,.83+rhythm.y*.4,hipZ+jabBody.hipForward],knee=[kneeX,.48+lift*.25,kneeZ+forward*.45+jabBody.hipForward*.5],foot=[footX,.12+lift,footZ+forward];
         const [toeX,toeZ]=rotateXZ(0,.06,angles.feetYaw);
         setSegment(leg.thigh,hip,knee);setSegment(leg.shin,knee,foot);leg.kneeJoint.position.set(...knee);
         leg.boot.position.set(foot[0]+toeX,.075+lift,foot[2]+toeZ);leg.boot.rotation.y=angles.feetYaw;
@@ -95,36 +102,54 @@ export function createView(container){
       }
       for(const side of ['L','R']){
         const sign=side==='L'?1:-1,hand=visualGloveLocal(f,side,s.time,{idle:idleHands}),[shoulderX,shoulderZ]=rotateXZ(sign*.3,0,bodyYaw);
-        const shoulder=[shoulderX+headX*.3,1.39,shoulderAdvance+shoulderZ];
+        const shoulder=[shoulderX+headX*.3+rhythm.x,1.39+rhythm.y,shoulderAdvance+shoulderZ];
         a.shoulders[side].position.set(...shoulder);
         const active=attack&&m.side===side;
-        const openElbow=[(shoulder[0]+hand[0])*.5+sign*(active&&m.kind==='hook'?.16:.085),Math.min(shoulder[1],hand[1])-.17,(shoulder[2]+hand[2])*.5-.09];
+        const openElbow=[(shoulder[0]+hand[0])*.5+sign*(active&&m.kind==='hook'?.16:reference?.035:.085),Math.min(shoulder[1],hand[1])-.17,(shoulder[2]+hand[2])*.5-.09];
         const defense=f.defense[side],guardU=clamp(defense.t/HEAD_BLOCK.transition,0,1),guardEase=guardU*guardU*(3-2*guardU);
         const fromBlock=defense.from==='block'?1:0,toBlock=defense.to==='block'?1:0;
         const mechanical=gloveLocal(f,side),rest=restingGlove(f,side);
+        if(reference&&f.parry[side]){
+          const parry=f.parry[side],u=clamp((parry.t-PARRY.prepare-PARRY.tap)/PARRY.recover,0,1);
+          hand[0]=mechanical[0]+(idleHands?parry.visualOffset?.[0]||0:0)*(1-u*u*(3-2*u));
+        }
         const handTravel=Math.hypot(...mechanical.map((v,index)=>v-rest[index]));
         const blockPose=fromBlock+(toBlock-fromBlock)*guardEase;
         const fadeU=clamp((handTravel-HEAD_BLOCK.visualHoldTravel)/HEAD_BLOCK.visualFadeTravel,0,1),fadeEase=fadeU*fadeU*(3-2*fadeU);
         const visualBlock=blockPose*(1-fadeEase);
+        const closeGuard=reference&&i===0;
         const renderedHand=[
-          hand[0]+sign*(HEAD_BLOCK.visualGloveX-HEAD_BLOCK.gloveX)*visualBlock,
-          hand[1]+(HEAD_BLOCK.visualGloveY-HEAD_BLOCK.gloveY)*visualBlock,
-          hand[2]+(HEAD_BLOCK.visualGloveForward-HEAD_BLOCK.gloveForward)*visualBlock,
+          hand[0]+sign*((closeGuard?LOOK.guardX:HEAD_BLOCK.visualGloveX)-HEAD_BLOCK.gloveX)*visualBlock,
+          hand[1]+((closeGuard?LOOK.guardY:HEAD_BLOCK.visualGloveY)-HEAD_BLOCK.gloveY)*visualBlock,
+          hand[2]+((closeGuard?LOOK.guardForward:HEAD_BLOCK.visualGloveForward)-HEAD_BLOCK.gloveForward)*visualBlock,
         ];
         const blockTuck=visualBlock*(1-clamp(handTravel/.18,0,1));
         const tuckedElbow=[sign*HEAD_BLOCK.elbowX,HEAD_BLOCK.elbowY,HEAD_BLOCK.elbowForward];
         const elbow=openElbow.map((value,index)=>value+(tuckedElbow[index]-value)*blockTuck);
-        setSegment(a.arms[side].upper,shoulder,elbow);setSegment(a.arms[side].forearm,elbow,renderedHand);a.elbows[side].position.set(...elbow);
+        // Keep the first-person upper-arm attachment behind the eye, preventing
+        // a cut cylinder cap in the near plane while keeping the arm connected.
+        const armRoot=reference&&i===0?[sign*.30,shoulder[1],-.24]:shoulder;
+        setSegment(a.arms[side].upper,armRoot,elbow);setSegment(a.arms[side].forearm,elbow,renderedHand);a.elbows[side].position.set(...elbow);
         const parry=parryStatus(f,side),redirected=f.deflection[side]?.trajectory==='parry-down';
-        const glovePitch=active&&m.kind==='upper'?-.8:redirected?.32:parry?.phase==='tap'?.18:parry?.phase==='prepare'?.04:-.15+.12*blockTuck;
+        let glovePitch=active&&m.kind==='upper'?-.8:redirected?.32:parry?.phase==='tap'?.18:parry?.phase==='prepare'?.04:-.15+.12*blockTuck;
+        if(reference){
+          const extension=clamp(handTravel/.7,0,1);
+          const punchPitch=m?.kind==='upper'?.35:m?.kind==='hook'?1.1:1.35;
+          glovePitch=parry?glovePitch:-.08+(punchPitch+.08)*extension;
+        }
         a.gloves[side].position.set(...renderedHand);a.gloves[side].rotation.set(glovePitch,(side==='L'?-.12:.12)*(1-.45*blockTuck),sign*(.1-.05*blockTuck));
       }
       a.gloveMat.emissive.set(f.hitFlash>.1?'#512414':f.blockedFlash>.1?'#183b30':'#000000');
     }
     const p=s.fighters[0],o=s.fighters[1];
     const playerHead=jabBodyMotion(p);
-    camera.position.set(-slipOffset(p),1.69,p.z+.28+playerHead.headForward*p.face);
-    camera.lookAt(0,1.35,o.z);
+    const moveCamera=reference&&idleHands&&cameraMotion;
+    const t=s.time*Math.PI*2;
+    const response=flash=>Math.sin((1-flash)*Math.PI)*flash;
+    const hit=moveCamera?response(p.hitFlash):0,blocked=moveCamera?response(p.blockedFlash):0;
+    camera.position.set(-slipOffset(p)+(moveCamera?Math.sin(t/3.6)*LOOK.cameraX:0),(reference?LOOK.eyeY:1.69)+(moveCamera?Math.sin(t/2.7)*LOOK.cameraY:0),p.z+(reference?LOOK.eyeBack:.28)+playerHead.headForward*p.face+hit*LOOK.hitBack+blocked*LOOK.blockBack);
+    camera.lookAt(0,reference?LOOK.lookY:1.35,o.z);
+    if(moveCamera)camera.rotateZ(Math.sin(t/3.6)*LOOK.cameraRoll+hit*LOOK.hitRoll);
     renderer.render(scene,camera);
   }
   function gloveScreenPosition(index,side){
@@ -158,7 +183,27 @@ export function createView(container){
     const opponent=actors[1-index];
     return {width:rect.width,height:rect.height,left,right,gloveGap:left.glove&&right.glove?Math.abs(left.glove.x-right.glove.x):null,slitWidth,slitRatio:slitWidth/rect.width,opponent:{head:project(opponent?.head),chest:project(opponent?.chest)},elbowGap:left.elbow&&right.elbow?Math.abs(left.elbow.x-right.elbow.x):null};
   }
+  function presentationState(){
+    const head=actors[1].head.getWorldPosition(new THREE.Vector3()).project(camera);
+    const ray=new THREE.Raycaster(),gloves=Object.values(actors[0].gloves),samples=200;
+    const blocked=[];
+    for(let n=0;n<=samples;n++){
+      ray.setFromCamera(new THREE.Vector2(n/samples*2-1,head.y),camera);
+      blocked.push(ray.intersectObjects(gloves,true).length>0);
+    }
+    const center=Math.round((head.x+1)*.5*samples);
+    let left=center,right=center;
+    if(!blocked[center]){
+      while(left>0&&!blocked[left-1])left--;
+      while(right<samples&&!blocked[right+1])right++;
+    }
+    return {reference,cameraMotion:cameraMotion&&idleHands,camera:camera.position.toArray(),cameraRotation:camera.rotation.toArray().slice(0,3),
+      hands:actors.map(a=>Object.fromEntries(['L','R'].map(side=>[side,{glove:a.gloves[side].position.toArray(),rotation:a.gloves[side].rotation.toArray().slice(0,3),elbow:a.elbows[side].position.toArray(),shoulder:a.shoulders[side].position.toArray()}]))),
+      head:actors[1].head.position.toArray(),headVisibleThroughGuard:!blocked[center],
+      headGapRatio:blocked[center]?0:(right-left)/samples,headRowGloveCoverage:blocked.filter(Boolean).length/blocked.length,
+      drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles};
+  }
   const observer=new ResizeObserver(()=>{const {width,height}=container.getBoundingClientRect();if(width&&height){camera.aspect=width/height;camera.updateProjectionMatrix();renderer.setSize(width,height,false);if(lastState)render(lastState);}});
   observer.observe(container);
-  return {render,gloveScreenPosition,guardWindow,canvas:renderer.domElement,dispose(){observer.disconnect();renderer.dispose();scene.traverse(o=>{o.geometry?.dispose();if(o.material){if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material.dispose();}});}};
+  return {render,gloveScreenPosition,guardWindow,presentationState,canvas:renderer.domElement,dispose(){observer.disconnect();renderer.dispose();renderer.forceContextLoss();renderer.domElement.remove();scene.traverse(o=>{o.geometry?.dispose();if(o.material){if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material.dispose();}});}};
 }

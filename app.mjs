@@ -1,13 +1,13 @@
-import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.22';
-import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.22';
-import {LAB_CASES,createLabRun,advanceLabRun,labProgress} from './scenario-lab.mjs?v=0.22';
+import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.23';
+import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.23';
+import {LAB_CASES,createLabRun,advanceLabRun,labProgress} from './scenario-lab.mjs?v=0.23';
 const $=id=>document.getElementById(id);
 let state=createMatch(),target='head',view=null,lastFrame=0,accumulator=0,lastUi=-1,lastEvent=0,dirty=true;
 let pauseReason='再開すると、同じ姿勢から続きます。';
 const PARRY_EFFECT_DURATION_MS=720;
 let parryEffectTimer=null,parryEffectTarget=null;
 const KEY_STORAGE='super-slow-boxing.keymap.v2';
-const LAB_VERDICT_STORAGE='super-slow-boxing.lab-verdicts.v10';
+const LAB_VERDICT_STORAGE='super-slow-boxing.lab-verdicts.v11';
 let keyMap=loadSavedKeys(),listeningAction=null;
 let labCaseIndex=0,labRun=null,labVerdicts=loadLabVerdicts();
 const actionButtons=[...document.querySelectorAll('[data-attack],[data-defense],[data-step],[data-slip],#feint')];
@@ -23,8 +23,10 @@ function positionParryEffect(){
   const anchor=view.gloveScreenPosition(parryEffectTarget.fighter,parryEffectTarget.side);
   if(!anchor?.visible)return;
   const stage=$('stage'),padding=4,half=effect.offsetWidth*.5;
+  const metaBottom=document.querySelector('.view-meta').getBoundingClientRect().bottom-stage.getBoundingClientRect().top;
+  const minimumTop=metaBottom+padding+effect.offsetHeight;
   effect.style.left=Math.max(half+padding,Math.min(anchor.x,stage.clientWidth-half-padding))+'px';
-  effect.style.top=Math.max(effect.offsetHeight+padding,Math.min(anchor.y,stage.clientHeight-padding))+'px';
+  effect.style.top=Math.max(minimumTop,Math.min(anchor.y,stage.clientHeight-padding))+'px';
 }
 function showParryEffect(event){
   hideParryEffect();
@@ -255,8 +257,20 @@ function updateUI(){
   }
   updateLabUI();
 }
+function viewOptions(){return {reference:$('look').value==='reference',cameraMotion:$('camera-motion').getAttribute('aria-pressed')==='true'};}
+let viewFactory=null;
+function refreshLook(){
+  if(!viewFactory)return;
+  view?.dispose();view=viewFactory($('stage'),viewOptions());view.render(state);positionParryEffect();
+  const params=new URLSearchParams(location.search);
+  if($('look').value==='reference')params.set('look','reference');else params.delete('look');
+  history.replaceState(null,'',location.pathname+(params.size?'?'+params.toString():'')+location.hash);
+  $('camera-motion').disabled=$('look').value!=='reference'||matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+$('look').addEventListener('change',refreshLook);
+$('camera-motion').addEventListener('click',()=>{const enabled=$('camera-motion').getAttribute('aria-pressed')!=='true';$('camera-motion').setAttribute('aria-pressed',String(enabled));$('camera-motion').textContent='視点の揺れ '+(enabled?'ON':'OFF');refreshLook();});
 async function boot(){
-  try{const {createView}=await import('./view.mjs?v=0.22');view=createView($('stage'));view.render(state);updateUI();}
+  try{const {createView}=await import('./view.mjs?v=0.23');viewFactory=createView;view=createView($('stage'),viewOptions());view.render(state);updateUI();}
   catch(error){$('load-error').hidden=false;$('load-error').textContent='3D画面を起動できませんでした。WebGLに対応したブラウザで、このページを開き直してください。';$('start').textContent='3Dの起動に失敗';console.error(error);}
   requestAnimationFrame(frame);
 }
@@ -271,8 +285,11 @@ function frame(now){
   requestAnimationFrame(frame);
 }
 const pageParams=new URLSearchParams(location.search);
+if(pageParams.get('look')==='reference')$('look').value='reference';
+if(matchMedia('(prefers-reduced-motion: reduce)').matches){$('camera-motion').setAttribute('aria-pressed','false');$('camera-motion').textContent='視点の揺れ OFF';}
+$('camera-motion').disabled=$('look').value!=='reference'||matchMedia('(prefers-reduced-motion: reduce)').matches;
 if(pageParams.has('lab'))$('mode').value='lab';
 if(pageParams.has('test')){
-  window.__boxingTest={snapshot:()=>structuredClone(state),keymap:()=>({...keyMap}),target:()=>target,lab:()=>labRun?structuredClone({caseIndex:labRun.caseIndex,status:labRun.status,defenseIssuedAt:labRun.defenseIssuedAt,parryStart:labRun.parryStart,tapStart:labRun.tapStart,preCueMotion:labRun.preCueMotion,punchStartAt:labRun.punchStartAt,leadFootStartAt:labRun.leadFootStartAt,bodyStartAt:labRun.bodyStartAt,leadFootPeak:labRun.leadFootPeak,bodyPeak:labRun.bodyPeak,impact:labRun.impact,rebound:labRun.rebound,checks:labRun.checks}):null,parryEffect:()=>parryEffectTarget&&view?{...parryEffectTarget,anchor:view.gloveScreenPosition(parryEffectTarget.fighter,parryEffectTarget.side)}:null,guardWindow:(fighter=0)=>view?.guardWindow(fighter)||null,advance(t,cpuEnabled=false){for(let n=0;n<Math.round(t/STEP);n++){if(isLabMode()&&labRun?.status==='running')advanceLabRun(labRun,STEP);else tick(state,STEP,{cpuEnabled});}if(view)view.render(state);updateUI();positionParryEffect();},reset(options){labRun=null;state=createMatch(options);lastEvent=0;if(view)view.render(state);updateUI();positionParryEffect();},ready:()=>!!view};
+  window.__boxingTest={snapshot:()=>structuredClone(state),keymap:()=>({...keyMap}),target:()=>target,lab:()=>labRun?structuredClone({caseIndex:labRun.caseIndex,status:labRun.status,defenseIssuedAt:labRun.defenseIssuedAt,parryStart:labRun.parryStart,tapStart:labRun.tapStart,preCueMotion:labRun.preCueMotion,punchStartAt:labRun.punchStartAt,leadFootStartAt:labRun.leadFootStartAt,bodyStartAt:labRun.bodyStartAt,leadFootPeak:labRun.leadFootPeak,bodyPeak:labRun.bodyPeak,impact:labRun.impact,rebound:labRun.rebound,checks:labRun.checks}):null,parryEffect:()=>parryEffectTarget&&view?{...parryEffectTarget,anchor:view.gloveScreenPosition(parryEffectTarget.fighter,parryEffectTarget.side)}:null,presentation:()=>view?.presentationState(),guardWindow:(fighter=0)=>view?.guardWindow(fighter)||null,advance(t,cpuEnabled=false){for(let n=0;n<Math.round(t/STEP);n++){if(isLabMode()&&labRun?.status==='running')advanceLabRun(labRun,STEP);else tick(state,STEP,{cpuEnabled});}if(view)view.render(state);updateUI();positionParryEffect();},reset(options){labRun=null;state=createMatch(options);lastEvent=0;if(view)view.render(state);updateUI();positionParryEffect();},ready:()=>!!view};
 }
 buildKeySettings();updateUI();boot();
