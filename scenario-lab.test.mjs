@@ -76,6 +76,7 @@ test('Case 03 places the left glove on the jab line, holds contact briefly, then
   assert.ok(run.leftBlockMidpointY>startLeft[1]+.2&&run.leftBlockMidpointY<run.impact.defenderLeftGlove[1]-.15);
   assert.ok(run.impact.defenderLeftGlove[1]>startLeft[1]+.4);
   assert.ok(run.impact.defenderRightGlove[1]>startRight[1]+.4,'the right glove stays beside the forehead');
+  assert.ok(Math.abs(run.impact.defenderLeftGlove[2]-run.impact.defenderRightGlove[2])<.01,'both gloves stay at the same forehead depth');
   assert.ok(run.impact.defenderTurn.turn<=-LEFT_BLOCK_TURN.angle*.9);
   assert.ok(run.impact.defenderLeftGlove[0]<.05,'the left glove comes to the jab line');
   assert.equal(run.impact.defenderLeftDefense,'block');
@@ -83,8 +84,8 @@ test('Case 03 places the left glove on the jab line, holds contact briefly, then
   assert.equal(run.impact.event.type,'block');
   assert.equal(run.impact.event.technique,'left-turn');
   assert.equal(run.impact.event.blockSide,'L');
-  assert.ok(run.impact.event.punchProgress<.75,'the first contact happens before full extension');
-  assert.ok(run.impact.event.gloveDistance<=LEFT_BLOCK_TURN.contactDistance);
+  assert.ok(run.impact.event.punchProgress<.95,'the first contact happens before full extension');
+  assert.ok(run.impact.event.gloveDistance<=LEFT_BLOCK_TURN.bothHeadContactDistance);
   assert.ok(run.impact.event.lineOffset<LEFT_BLOCK_TURN.lineOffset,'the glove surface intersects the jab line');
   assert.equal(run.impact.event.damage,0);
   assert.equal(run.impact.playerHp,100);

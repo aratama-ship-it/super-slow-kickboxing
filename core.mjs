@@ -26,7 +26,7 @@ export const GUARD_IDLE=Object.freeze({x:.012,y:.018,z:.014,periods:Object.freez
 export const TARGET_HEIGHT=Object.freeze({head:1.64,jabHead:1.54,body:1.12});
 export const JAB_LEAD_FOOT=Object.freeze({forward:.10,lift:.018,kneeForwardRatio:.45,deflectReturn:1.1});
 export const JAB_BODY=Object.freeze({hipForward:.035,chestForward:.050,headForward:.045,turn:4*Math.PI/180});
-export const LEFT_BLOCK_TURN=Object.freeze({angle:12*Math.PI/180,gloveInward:.10,gloveDrop:.09,gloveReach:.06,contactDistance:.27,lineOffset:.15,hold:.22,returnDuration:1.5});
+export const LEFT_BLOCK_TURN=Object.freeze({angle:12*Math.PI/180,gloveInward:.10,gloveDrop:.09,gloveReach:.06,bothHeadReach:-.075,contactDistance:.27,bothHeadContactDistance:.14,lineOffset:.15,hold:.22,returnDuration:1.5});
 export const HEAD_BLOCK=Object.freeze({
   gloveX:.18,gloveY:1.67,gloveForward:.22,
   visualGloveX:.155,visualGloveY:1.67,visualGloveForward:.12,
@@ -164,7 +164,7 @@ export function restingGlove(f,side){
     pose[2]=-x*Math.sin(turn.turn)+z*Math.cos(turn.turn);
     if(side==='L'){
       pose[1]-=LEFT_BLOCK_TURN.gloveDrop*turn.progress;
-      pose[2]+=LEFT_BLOCK_TURN.gloveReach*turn.progress;
+      pose[2]+=(f.leftTurnGuard==='both-head'?LEFT_BLOCK_TURN.bothHeadReach:LEFT_BLOCK_TURN.gloveReach)*turn.progress;
     }
   }
   return pose;
@@ -354,7 +354,8 @@ function resolveLeftTurnBlocks(s){
     const from=gloveLocal(f,'L'),incoming=localToWorld(f,from),guard=localToWorld(d,gloveLocal(d,'L'));
     const distance=Math.hypot(...incoming.map((value,i)=>value-guard[i]));
     const lineOffset=Math.hypot(incoming[0]-guard[0],incoming[1]-guard[1]);
-    if(distance>LEFT_BLOCK_TURN.contactDistance||lineOffset>LEFT_BLOCK_TURN.lineOffset||(guard[2]-incoming[2])*f.face<0)continue;
+    const contactDistance=d.leftTurnGuard==='both-head'?LEFT_BLOCK_TURN.bothHeadContactDistance:LEFT_BLOCK_TURN.contactDistance;
+    if(distance>contactDistance||lineOffset>LEFT_BLOCK_TURN.lineOffset||(guard[2]-incoming[2])*f.face<0)continue;
     punch.a.hit=true;
     hits.push({who:f.id,move:'jab',target:'head',type:'block',defense:'block',technique:'left-turn',blockSide:'L',damage:0,drain:7,
       punchProgress:punchTravelProgress(f),gloveDistance:distance,lineOffset,blockedFrom:from.slice(),

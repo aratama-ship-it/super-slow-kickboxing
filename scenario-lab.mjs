@@ -24,7 +24,7 @@ import {
   requestDefense,
   startMatch,
   tick,
-} from './core.mjs?v=0.46';
+} from './core.mjs?v=0.47';
 
 export const LAB_CASES=Object.freeze([
   Object.freeze({
@@ -46,8 +46,8 @@ export const LAB_CASES=Object.freeze([
     question:'左手のグローブをジャブの進路に置き、拳を短く止めて打ってきた方向へ戻せるか。',
     defense:'両手を額へ・左手で受け止め＋体の右回旋',viewLabel:'両手 額へ・左手で受け止め',defenseAt:null,leftBlockAt:.75,
     initialGuard:Object.freeze({L:'body',R:'body'}),
-    conditions:Object.freeze(['パンチの間合い','相手は頭へ左ジャブ','開始時は両手とも腹の位置','0.75 TUから両手を額へ上げ、体を右へ12°ひねって左手をジャブの進路へ置く','右手は額の横でガードし、青い拳は赤い左グローブへ接触','他の入力なし']),
-    expected:'両手を腹から額へ上げると、実際のグローブと前腕で視界が狭くなり、中央の細い隙間から相手が見える。体を右へ回して左拳をジャブの進路へ置き、接触した青い拳と前足・腰は短く止まって、横へ流れず元の構えへ戻る。ダメージ0、両者の腕は弾かれない。視界の幅とフォームの自然さは本人確認待ち。',
+    conditions:Object.freeze(['パンチの間合い','相手は頭へ左ジャブ','開始時は両手とも腹の位置','0.75 TUから両手を額へ上げ、体を右へ12°ひねって左手をジャブの進路へ置く','左右のグローブは額の同じ奥行き、青い拳は赤い左グローブへ接触','他の入力なし']),
+    expected:'両手を腹から額へ上げ、左右のグローブを額の同じ奥行きに置く。実際のグローブと前腕で視界が狭くなり、中央の細い隙間から相手が見える。体を右へ回して左拳をジャブの進路へ置き、接触した青い拳と前足・腰は短く止まって、横へ流れず元の構えへ戻る。ダメージ0、両者の腕は弾かれない。視界の幅とフォームの自然さは本人確認待ち。',
   }),
 ]);
 
@@ -106,8 +106,8 @@ function completeChecks(run){
     {label:'相手のジャブが通常の戻りを完了',pass:state.fighters[1].attack===null&&currentDefense(state.fighters[0],'R')==='block'},
   ];
   return [
-    {label:'両手を腹から額へ上げ、右手も顔を守った',pass:run.leftBlockIssuedAt!==null&&run.leftBlockStart&&run.leftBlockMidpointY>run.leftBlockStart[1]+.2&&run.leftBlockMidpointY<impact?.defenderLeftGlove[1]-.15&&impact.defenderLeftGlove[1]-run.leftBlockStart[1]>=.4&&run.rightGloveStart&&impact.defenderRightGlove[1]-run.rightGloveStart[1]>=.4},
-    {label:'青い拳が伸び切る前に赤い左グローブへ接触',pass:impact?.defenderLeftDefense==='block'&&impact?.defenderRightDefense==='block'&&impact.defenderTurn.progress>.9&&event?.punchProgress<1&&event?.gloveDistance<=LEFT_BLOCK_TURN.contactDistance&&event?.lineOffset<=LEFT_BLOCK_TURN.lineOffset},
+    {label:'両手を額へ上げ、左右の拳の奥行きをそろえた',pass:run.leftBlockIssuedAt!==null&&run.leftBlockStart&&run.leftBlockMidpointY>run.leftBlockStart[1]+.2&&run.leftBlockMidpointY<impact?.defenderLeftGlove[1]-.15&&impact.defenderLeftGlove[1]-run.leftBlockStart[1]>=.4&&run.rightGloveStart&&impact.defenderRightGlove[1]-run.rightGloveStart[1]>=.4&&Math.abs(impact.defenderLeftGlove[2]-impact.defenderRightGlove[2])<.01},
+    {label:'青い拳が伸び切る前に赤い左グローブへ接触',pass:impact?.defenderLeftDefense==='block'&&impact?.defenderRightDefense==='block'&&impact.defenderTurn.progress>.9&&event?.punchProgress<1&&event?.gloveDistance<=LEFT_BLOCK_TURN.bothHeadContactDistance&&event?.lineOffset<=LEFT_BLOCK_TURN.lineOffset},
     {label:'接触地点で短く止まり、横へ流れず元の方向へ戻った',pass:event?.type==='block'&&event?.technique==='left-turn'&&event?.blockSide==='L'&&event?.damage===0&&impact?.playerHp===100&&run.holdSamples>=10&&run.holdMaxMotion<1e-7&&run.forwardAfterBlockMax<1e-7&&run.returnPathError<1e-6&&run.retreatDistance>.4},
     {label:'相手の左腕も自分の左右の腕も弾かれない',pass:impact?.attackerLeftDeflection===0&&impact?.defenderLeftDeflection===0&&impact?.defenderRightDeflection===0},
     {label:'相手のジャブが構えへの戻りを完了',pass:state.fighters[1].attack===null&&currentDefense(state.fighters[0],'L')==='block'&&currentDefense(state.fighters[0],'R')==='block'},

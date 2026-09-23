@@ -3,7 +3,7 @@ import * as THREE from './vendor/three.module.min.js';
 // Presentation only. Combat positions, timing and hit tests remain in core.mjs.
 export const REFERENCE_LOOK=Object.freeze({
   fov:70,eyeY:1.69,eyeBack:.15,lookY:1.48,
-  guardX:.198,case03RightVisualX:.173,guardY:1.71,guardForward:.12,
+  guardX:.198,case03LeftVisualX:.298,case03RightVisualX:.173,guardY:1.71,guardForward:.12,
   guardLeadForward:.090,guardRearForward:-.030,
   swayX:.009,breatheY:.004,bodyRoll:.012,
   cameraX:.004,cameraY:.003,cameraRoll:.004,
