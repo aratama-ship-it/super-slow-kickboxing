@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,PARRY} from './core.mjs?v=0.34';
+import {MOVES,PARRY} from './core.mjs?v=0.35';
 
 // Glove geometry: +Y runs from cuff to knuckles, -Z is the palm surface.
 export const HAND_TURN=Object.freeze({parryTurnTapRatio:.5,forearmWidth:.94,forearmDepth:1.03,wrist:Object.freeze([0,-.197,-.015])});
@@ -40,7 +40,7 @@ export function forearmOrientation(elbow,hand,palm){
 }
 
 
-export const PARRY_ARM=Object.freeze({elbowBack:.16,elbowLift:.13,elbowOut:.03,tapElbowBack:.05,tapElbowOut:.03,tapDrop:.04,iterations:24});
+export const PARRY_ARM=Object.freeze({elbowBack:.16,elbowLift:.13,elbowOut:.03,tapElbowBack:.05,tapElbowOut:.045,tapDrop:.04,iterations:24});
 
 export function parryTapAmount({parry=null,prepare=.18,tap=.55,recover=.9}){
   if(!parry)return 0;
