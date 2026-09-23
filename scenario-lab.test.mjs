@@ -50,7 +50,7 @@ test('Case 02 proves a right block absorbs the jab without deflecting either arm
   assert.equal(run.checks.every(check=>check.pass),true);
 });
 
-test('Case 03 turns right, brings the left glove inward, and gently redirects the jab without arm deflection',()=>{
+test('Case 03 catches the jab at the left glove and sends it to screen right outside the head',()=>{
   const run=createLabRun(2),player=run.state.fighters[0];
   const startLeft=gloveLocal(player,'L').slice(),startRight=gloveLocal(player,'R').slice();
   while(run.state.time<2.5)advanceLabRun(run,STEP);
@@ -58,23 +58,33 @@ test('Case 03 turns right, brings the left glove inward, and gently redirects th
   assert.ok(midLeft[1]>startLeft[1]+.2&&midLeft[1]<startLeft[1]+.5);
   assert.equal(midRight[1],startRight[1]);
   assert.ok(leftBlockMotion(player).turn<0);
+  while(!run.impact)advanceLabRun(run,STEP);
+  const contactPose=gloveLocal(run.state.fighters[1],'L');
+  assert.deepEqual(contactPose,run.impact.event.redirectFrom,'the visual trajectory begins at the actual glove contact');
+  advanceLabRun(run,STEP);
+  const nextPose=gloveLocal(run.state.fighters[1],'L');
+  assert.ok(nextPose[0]>contactPose[0]&&nextPose[2]>contactPose[2],'the jab moves right and forward immediately after contact');
   while(run.status==='running')advanceLabRun(run,STEP);
   assert.equal(run.status,'complete');
-  assert.ok(run.leftBlockIssuedAt>=1&&run.leftBlockIssuedAt<1+STEP);
+  assert.ok(run.leftBlockIssuedAt>=.75&&run.leftBlockIssuedAt<.75+STEP);
   assert.ok(run.leftBlockMidpointY>startLeft[1]+.2&&run.leftBlockMidpointY<run.impact.defenderLeftGlove[1]-.2);
   assert.ok(run.impact.defenderLeftGlove[1]>startLeft[1]+.5);
   assert.equal(run.impact.defenderRightGlove[1],startRight[1]);
   assert.ok(run.impact.defenderRightGlove[0]<startRight[0],'the body turn carries the right glove outward while it stays low');
-  assert.ok(run.impact.defenderTurn.turn<=-LEFT_BLOCK_TURN.angle*.98);
+  assert.ok(run.impact.defenderTurn.turn<=-LEFT_BLOCK_TURN.angle*.9);
   assert.ok(run.impact.defenderLeftGlove[0]<=.10,'the left glove comes toward the center line');
   assert.equal(run.impact.defenderLeftDefense,'block');
   assert.equal(run.impact.defenderRightDefense,'body');
   assert.equal(run.impact.event.type,'block');
   assert.equal(run.impact.event.technique,'left-turn');
   assert.equal(run.impact.event.blockSide,'L');
-  assert.equal(run.impact.event.damage,1);
-  assert.equal(run.impact.playerHp,99);
-  assert.ok(run.redirectPeak>=LEFT_BLOCK_TURN.jabRedirect*.85);
+  assert.ok(run.impact.event.punchProgress<.75,'the first contact happens before full extension');
+  assert.ok(run.impact.event.gloveDistance<=LEFT_BLOCK_TURN.contactDistance);
+  assert.equal(run.impact.event.damage,0);
+  assert.equal(run.impact.playerHp,100);
+  assert.ok(run.redirectPeak>=LEFT_BLOCK_TURN.jabRedirect*.95);
+  assert.ok(run.redirectForwardPeak>=LEFT_BLOCK_TURN.redirectForward*.95);
+  assert.ok(run.headClearanceMin>1,'the redirected glove stays outside the head hit region');
   assert.equal(run.impact.attackerLeftDeflection,0);
   assert.equal(run.impact.defenderLeftDeflection,0);
   assert.equal(run.impact.defenderRightDeflection,0);
