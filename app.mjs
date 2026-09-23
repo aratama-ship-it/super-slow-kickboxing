@@ -1,6 +1,6 @@
-import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.39';
-import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.39';
-import {LAB_CASES,createLabRun,advanceLabRun,labProgress} from './scenario-lab.mjs?v=0.39';
+import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.40';
+import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.40';
+import {LAB_CASES,createLabRun,advanceLabRun,labProgress} from './scenario-lab.mjs?v=0.40';
 const $=id=>document.getElementById(id);
 let state=createMatch(),target='head',view=null,lastFrame=0,accumulator=0,lastUi=-1,lastEvent=0,dirty=true;
 let pauseReason='再開すると、同じ姿勢から続きます。';
@@ -45,6 +45,12 @@ function loadLabVerdicts(){
 }
 function persistLabVerdicts(){try{localStorage.setItem(LAB_VERDICT_STORAGE,JSON.stringify(labVerdicts));}catch{}}
 function isLabMode(){return $('mode').value==='lab';}
+function syncLabUrl(){
+  const params=new URLSearchParams(location.search);
+  if(isLabMode()){params.set('lab','1');params.set('case',LAB_CASES[labCaseIndex].number);}
+  else{params.delete('lab');params.delete('case');}
+  history.replaceState(null,'',location.pathname+(params.size?'?'+params.toString():'')+location.hash);
+}
 function persistKeys(){
   try{localStorage.setItem(KEY_STORAGE,JSON.stringify(keyMap));return true;}catch{return false;}
 }
@@ -148,8 +154,8 @@ function startLabCase(){
   $('input-feedback').textContent='固定条件で繰り返し再生中です。動作が終わると2秒待って再生します。';$('hit-feedback').textContent='接触を待っています。';$('hit-feedback').removeAttribute('data-impact');dirty=true;updateUI();
 }
 function selectLabCase(next){
-  if(next<0||next>=LAB_CASES.length)return;
-  labCaseIndex=next;reset();
+  if(next<0||next>=LAB_CASES.length||!LAB_CASES.slice(0,next).every(item=>labVerdicts[item.id]==='accepted'))return;
+  labCaseIndex=next;syncLabUrl();reset();
 }
 function setLabVerdict(verdict){
   if(!labLastComplete)return;
@@ -165,7 +171,7 @@ $('feint').addEventListener('click',()=>applyResult(requestFeint(state,0)));
 $('clear-queue').addEventListener('click',()=>{state.fighters[0].queue=null;applyResult({message:'予約を消しました'});});
 $('start').addEventListener('click',()=>{if(isLabMode()&&!labRun){startLabCase();return;}if(state.phase==='ended')reset();resume();});
 $('restart').addEventListener('click',reset);$('pause').addEventListener('click',togglePause);
-$('mode').addEventListener('change',reset);
+$('mode').addEventListener('change',()=>{syncLabUrl();reset();});
 $('speed').addEventListener('change',()=>{accumulator=0;dirty=true;updateUI();});
 $('help-toggle').addEventListener('click',()=>{const open=$('help').hidden;if(open)setKeySettingsOpen(false);$('help').hidden=!open;$('help-toggle').setAttribute('aria-expanded',String(open));if(open)pause('遊び方を確認中です。再開すると同じ姿勢から続きます。');});
 $('key-settings-toggle').addEventListener('click',()=>setKeySettingsOpen($('key-settings').hidden));
@@ -200,8 +206,9 @@ function replaceTextList(element,items){
   element.replaceChildren(...items.map(item=>{const li=document.createElement('li');li.textContent=item;return li;}));
 }
 function updateLabUI(){
-  const panel=$('scenario-lab');panel.hidden=!isLabMode();if(panel.hidden)return;
+  const panel=$('scenario-lab');panel.hidden=!isLabMode();$('lab-view-label').hidden=panel.hidden;if(panel.hidden)return;
   const definition=LAB_CASES[labCaseIndex],verdict=labVerdicts[definition.id],progress=labProgress(labRun);
+  $('lab-view-label').textContent='ケース'+definition.number+'｜'+(definition.rightGuard==='body'?'左手 顔・右手 腹':definition.defense);
   $('lab-count').textContent=definition.number+' / '+String(LAB_CASES.length).padStart(2,'0');
   $('lab-title').textContent=definition.title;$('lab-question').textContent=definition.question;$('lab-defense').textContent=definition.defense;
   $('lab-expected').textContent=definition.expected;replaceTextList($('lab-conditions'),definition.conditions);
@@ -289,7 +296,7 @@ function refreshLook(){
 $('look').addEventListener('change',refreshLook);
 $('camera-motion').addEventListener('click',()=>{const enabled=$('camera-motion').getAttribute('aria-pressed')!=='true';$('camera-motion').setAttribute('aria-pressed',String(enabled));$('camera-motion').textContent='視点の揺れ '+(enabled?'ON':'OFF');refreshLook();});
 async function boot(){
-  try{const {createView}=await import('./view.mjs?v=0.39');viewFactory=createView;view=createView($('stage'),viewOptions());view.render(state);updateUI();}
+  try{const {createView}=await import('./view.mjs?v=0.40');viewFactory=createView;view=createView($('stage'),viewOptions());view.render(state);updateUI();}
   catch(error){$('load-error').hidden=false;$('load-error').textContent='3D画面を起動できませんでした。WebGLに対応したブラウザで、このページを開き直してください。';$('start').textContent='3Dの起動に失敗';console.error(error);}
   requestAnimationFrame(frame);
 }
@@ -325,7 +332,12 @@ const pageParams=new URLSearchParams(location.search);
 if(pageParams.get('look')==='reference')$('look').value='reference';
 if(matchMedia('(prefers-reduced-motion: reduce)').matches){$('camera-motion').setAttribute('aria-pressed','false');$('camera-motion').textContent='視点の揺れ OFF';}
 $('camera-motion').disabled=$('look').value!=='reference'||matchMedia('(prefers-reduced-motion: reduce)').matches;
-if(pageParams.has('lab'))$('mode').value='lab';
+if(pageParams.has('lab')){
+  $('mode').value='lab';
+  const requestedCase=LAB_CASES.findIndex(item=>item.number===pageParams.get('case'));
+  if(requestedCase>=0&&LAB_CASES.slice(0,requestedCase).every(item=>labVerdicts[item.id]==='accepted'))labCaseIndex=requestedCase;
+  syncLabUrl();
+}
 if(pageParams.has('test')){
   window.__boxingTest={playback:()=>({paused:labPaused,remaining:labReplayRemaining,completed:!!labLastComplete}),elapse(seconds){for(let t=0;t<seconds;t+=.01)advancePlayback(Math.min(.01,seconds-t));if(view)view.render(state);updateUI();},snapshot:()=>structuredClone(state),keymap:()=>({...keyMap}),target:()=>target,lab:()=>labRun?structuredClone({caseIndex:labRun.caseIndex,status:labRun.status,defenseIssuedAt:labRun.defenseIssuedAt,parryStart:labRun.parryStart,tapStart:labRun.tapStart,preCueMotion:labRun.preCueMotion,punchStartAt:labRun.punchStartAt,leadFootStartAt:labRun.leadFootStartAt,bodyStartAt:labRun.bodyStartAt,leadFootPeak:labRun.leadFootPeak,bodyPeak:labRun.bodyPeak,impact:labRun.impact,rebound:labRun.rebound,checks:labRun.checks}):null,parryEffect:()=>parryEffectTarget&&view?{...parryEffectTarget,anchor:view.gloveScreenPosition(parryEffectTarget.fighter,parryEffectTarget.side)}:null,presentation:()=>view?.presentationState(),guardWindow:(fighter=0)=>view?.guardWindow(fighter)||null,advance(t,cpuEnabled=false){for(let n=0;n<Math.round(t/STEP);n++){if(isLabMode()&&labRun?.status==='running')advanceLabRun(labRun,STEP);else tick(state,STEP,{cpuEnabled});}rememberLabCompletion();if(view)view.render(state);updateUI();positionParryEffect();},reset(options){labRun=null;labPaused=false;labReplayRemaining=null;labLastComplete=null;state=createMatch(options);lastEvent=0;if(view)view.render(state);updateUI();positionParryEffect();},ready:()=>!!view};
 }

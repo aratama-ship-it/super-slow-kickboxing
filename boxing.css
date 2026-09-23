@@ -13,3 +13,4 @@
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}.parry-effect.is-active{opacity:1;transform:translate(-50%,calc(-100% - var(--parry-effect-gap)))}}
 
 .look-controls{display:flex;align-items:center;flex-wrap:wrap;gap:var(--s3);margin-bottom:var(--s3)}.look-controls label{font-weight:700}.look-controls select{max-width:100%}
+.view-meta .lab-view-label{font-weight:700;border:1px solid var(--line);white-space:nowrap}
