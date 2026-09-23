@@ -1,6 +1,6 @@
-import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.35';
-import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.35';
-import {LAB_CASES,createLabRun,advanceLabRun,labProgress} from './scenario-lab.mjs?v=0.35';
+import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.36';
+import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.36';
+import {LAB_CASES,createLabRun,advanceLabRun,labProgress} from './scenario-lab.mjs?v=0.36';
 const $=id=>document.getElementById(id);
 let state=createMatch(),target='head',view=null,lastFrame=0,accumulator=0,lastUi=-1,lastEvent=0,dirty=true;
 let pauseReason='再開すると、同じ姿勢から続きます。';
@@ -10,6 +10,8 @@ const KEY_STORAGE='super-slow-boxing.keymap.v2';
 const LAB_VERDICT_STORAGE='super-slow-boxing.lab-verdicts.v16';
 let keyMap=loadSavedKeys(),listeningAction=null;
 let labCaseIndex=0,labRun=null,labVerdicts=loadLabVerdicts();
+const LAB_REPLAY_GAP_SECONDS=2;
+let labPaused=false,labReplayRemaining=null,labLastComplete=null;
 const actionButtons=[...document.querySelectorAll('[data-attack],[data-defense],[data-step],[data-slip],#feint')];
 function applyResult(r){$('input-feedback').textContent=r.message;dirty=true;updateUI();}
 function hideParryEffect(){
@@ -119,10 +121,22 @@ function captureKey(e){
   if(!saved)message+=' このタブを閉じるまで有効です。';
   listeningAction=null;setKeyStatus(message);refreshKeyLabels();
 }
-function reset(){hideParryEffect();labRun=null;state=createMatch({mode:isLabMode()?'dummy':$('mode').value,seed:Date.now()>>>0});accumulator=0;lastEvent=0;lastUi=-1;$('input-feedback').textContent=isLabMode()?'固定条件を確認して、1件だけ再生してください。':'開始して、攻撃や守りを選んでください。';$('hit-feedback').textContent='命中・防御の理由をここに表示します。';$('hit-feedback').removeAttribute('data-impact');dirty=true;updateUI();}
-function pause(reason){if(state.phase==='running'){pauseMatch(state);pauseReason=reason||'再開すると、同じ姿勢から続きます。';accumulator=0;dirty=true;updateUI();}}
-function togglePause(){if(state.phase==='running')pause();else if(state.phase==='paused')resume();}
-function resume(){if(!view)return;startMatch(state);lastFrame=performance.now();accumulator=0;$('input-feedback').textContent=isLabMode()?'固定した組み合わせの続きを再生します。':'守りを先に置き、相手の動きを見てみてください。';dirty=true;updateUI();}
+function reset(){hideParryEffect();labRun=null;labPaused=false;labReplayRemaining=null;labLastComplete=null;state=createMatch({mode:isLabMode()?'dummy':$('mode').value,seed:Date.now()>>>0});accumulator=0;lastEvent=0;lastUi=-1;$('input-feedback').textContent=isLabMode()?'固定条件を確認して再生してください。同じ動きを2秒の間隔で繰り返します。':'開始して、攻撃や守りを選んでください。';$('hit-feedback').textContent='命中・防御の理由をここに表示します。';$('hit-feedback').removeAttribute('data-impact');dirty=true;updateUI();}
+function pause(reason){
+  if(isLabMode()&&labRun){if(labPaused)return;labPaused=true;}
+  else if(state.phase!=='running')return;
+  pauseMatch(state);pauseReason=reason||'再開すると、同じ姿勢・待ち時間から続きます。';accumulator=0;dirty=true;updateUI();
+}
+function togglePause(){
+  if(isLabMode()&&labRun){if(labPaused)resume();else pause();return;}
+  if(state.phase==='running')pause();else if(state.phase==='paused')resume();
+}
+function resume(){
+  if(!view)return;
+  if(isLabMode()&&labRun){labPaused=false;if(labRun.status==='running')startMatch(state);}
+  else startMatch(state);
+  lastFrame=performance.now();accumulator=0;$('input-feedback').textContent=isLabMode()?'固定した組み合わせの繰り返し再生を再開します。':'守りを先に置き、相手の動きを見てみてください。';dirty=true;updateUI();
+}
 function selectTarget(next,announce=false){
   target=next;document.querySelectorAll('[data-target]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.target===target)));
   if(announce)$('input-feedback').textContent='狙いを'+(target==='head'?'頭':'胴')+'に切り替えました。';
@@ -130,15 +144,16 @@ function selectTarget(next,announce=false){
 }
 function startLabCase(){
   if(!view)return;
-  hideParryEffect();labRun=createLabRun(labCaseIndex);state=labRun.state;accumulator=0;lastEvent=0;lastUi=-1;lastFrame=performance.now();
-  $('input-feedback').textContent='固定条件で再生中です。操作を加えず、接触と復帰を観察します。';$('hit-feedback').textContent='接触を待っています。';$('hit-feedback').removeAttribute('data-impact');dirty=true;updateUI();
+  hideParryEffect();labPaused=false;labReplayRemaining=null;labRun=createLabRun(labCaseIndex);state=labRun.state;accumulator=0;lastEvent=0;lastUi=-1;lastFrame=performance.now();
+  $('input-feedback').textContent='固定条件で繰り返し再生中です。動作が終わると2秒待って再生します。';$('hit-feedback').textContent='接触を待っています。';$('hit-feedback').removeAttribute('data-impact');dirty=true;updateUI();
 }
 function selectLabCase(next){
   if(next<0||next>=LAB_CASES.length)return;
   labCaseIndex=next;reset();
 }
 function setLabVerdict(verdict){
-  if(!labRun||labRun.status!=='complete')return;
+  if(!labLastComplete)return;
+  pause('判定を記録して、繰り返し再生を一時停止しました。');
   labVerdicts={...labVerdicts,[LAB_CASES[labCaseIndex].id]:verdict};persistLabVerdicts();dirty=true;updateUI();
 }
 document.querySelectorAll('[data-attack]').forEach(b=>b.addEventListener('click',()=>applyResult(requestAttack(state,0,b.dataset.attack,target))));
@@ -148,7 +163,7 @@ document.querySelectorAll('[data-slip]').forEach(b=>b.addEventListener('click',(
 document.querySelectorAll('[data-target]').forEach(b=>b.addEventListener('click',()=>selectTarget(b.dataset.target)));
 $('feint').addEventListener('click',()=>applyResult(requestFeint(state,0)));
 $('clear-queue').addEventListener('click',()=>{state.fighters[0].queue=null;applyResult({message:'予約を消しました'});});
-$('start').addEventListener('click',()=>{if(isLabMode()&&(!labRun||labRun.status==='complete')){startLabCase();return;}if(state.phase==='ended')reset();resume();});
+$('start').addEventListener('click',()=>{if(isLabMode()&&!labRun){startLabCase();return;}if(state.phase==='ended')reset();resume();});
 $('restart').addEventListener('click',reset);$('pause').addEventListener('click',togglePause);
 $('mode').addEventListener('change',reset);
 $('speed').addEventListener('change',()=>{accumulator=0;dirty=true;updateUI();});
@@ -201,9 +216,10 @@ function updateLabUI(){
   }else{
     $('lab-observed').textContent=labRun?progress.label:'まだ再生していません。';$('lab-after').textContent=definition.id==='jab-right-parry'?'接触後に両者の該当腕と相手の左前足・足腰を表示します。':'接触後に両者の該当腕を表示します。';
   }
-  const checks=labRun?.status==='complete'?labRun.checks:[{label:'再生後、'+(definition.id==='jab-right-parry'?'9':'5')+'項目を判定します',pass:null}];
+  $('lab-checks-heading').textContent=labLastComplete&&labRun?.status==='running'?'機械判定（前回）':'機械判定';
+  const checks=labLastComplete?labLastComplete.checks:[{label:'再生後、'+(definition.id==='jab-right-parry'?'9':'5')+'項目を判定します',pass:null}];
   $('lab-checks').replaceChildren(...checks.map(check=>{const li=document.createElement('li');li.textContent=(check.pass===null?'○':check.pass?'✓':'×')+' '+check.label;if(check.pass!==null)li.dataset.pass=String(check.pass);return li;}));
-  const complete=labRun?.status==='complete';$('lab-accept').disabled=!complete;$('lab-adjust').disabled=!complete;$('lab-replay').disabled=!view;
+  const complete=!!labLastComplete;$('lab-accept').disabled=!complete;$('lab-adjust').disabled=!complete;$('lab-replay').disabled=!view;
   $('lab-prev').disabled=labCaseIndex===0;$('lab-next').disabled=labCaseIndex===LAB_CASES.length-1||verdict!=='accepted';
   $('lab-next').textContent=labCaseIndex===LAB_CASES.length-1?'次の組み合わせは未登録':'次の組み合わせ';
 }
@@ -226,7 +242,8 @@ function updateUI(){
   actionButtons.forEach(b=>b.disabled=state.phase!=='running'||isLabMode());
   const a=p.attack,m=a?MOVES[a.id]:null;
   $('feint-window').textContent=!a?'打ち始めの区間だけ引き返せます。':a.feint?'引いています。次の技は戻ってから。':a.t<m.cancel*(a.wind/m.wind)?'いまは「引く」を選べます。':'打ち切る区間です。戻りを待ちます。';
-  $('pause').disabled=!['running','paused'].includes(state.phase)||(isLabMode()&&labRun?.status==='complete');$('pause').firstChild.textContent=state.phase==='paused'?'再開 ':'一時停止 ';
+  $('pause').disabled=isLabMode()?!labRun:!['running','paused'].includes(state.phase);$('pause').firstChild.textContent=(isLabMode()&&labRun?labPaused:state.phase==='paused')?'再開 ':'一時停止 ';
+  if(isLabMode()&&labRun?.status==='complete'&&!labPaused)$('input-feedback').textContent='動作が終わりました。2秒待って同じ動きを繰り返します。';
   const unseenEvents=state.events.filter(event=>event.id>lastEvent),newest=unseenEvents.at(-1);
   if(newest){
     const parryEvent=unseenEvents.find(event=>event.type==='block'&&event.defense==='parry'&&event.who===1);
@@ -238,7 +255,7 @@ function updateUI(){
     }else{const who=newest.who===0?'あなた':'CPU';$('hit-feedback').textContent=who+'の'+MOVES[newest.move].name+'：'+newest.reason+(newest.damage?'（'+newest.damage+'ダメージ）':'');}
     $('hit-feedback').dataset.impact=newest.type;
   }
-  $('overlay').hidden=state.phase==='running'||(isLabMode()&&labRun?.status==='complete');
+  $('overlay').hidden=state.phase==='running'||(isLabMode()&&labRun&&!labPaused);
   if(state.phase==='ready'){
     if(isLabMode()){
       const definition=LAB_CASES[labCaseIndex];$('overlay-tag').textContent='組み合わせ検証 '+definition.number+' / '+String(LAB_CASES.length).padStart(2,'0');$('overlay-title').textContent=definition.title;$('overlay-description').textContent=definition.question;
@@ -248,7 +265,7 @@ function updateUI(){
     }
     if(view){$('start').textContent=isLabMode()?'この組み合わせを再生':'ラウンドを始める';$('start').disabled=false;}
   }else if(state.phase==='paused'){
-    $('overlay-tag').textContent='CPU練習 / 一時停止';$('overlay-title').textContent='ここから考え直せます';$('overlay-description').textContent=pauseReason;$('start').textContent='ラウンドを再開する';
+    $('overlay-tag').textContent=isLabMode()?'組み合わせ検証 / 一時停止':'CPU練習 / 一時停止';$('overlay-title').textContent=isLabMode()?'繰り返し再生を一時停止':'ここから考え直せます';$('overlay-description').textContent=pauseReason;$('start').textContent=isLabMode()?'繰り返し再生を再開する':'ラウンドを再開する';
   }else if(state.phase==='ended'){
     $('overlay-tag').textContent=p.hp<=0||cpu.hp<=0?'ラウンド終了 / KO':'ラウンド終了 / 時間切れ';
     $('overlay-title').textContent=state.winner==='draw'?'引き分け':state.winner===0?'あなたの勝ち':'CPUの勝ち';
@@ -270,17 +287,35 @@ function refreshLook(){
 $('look').addEventListener('change',refreshLook);
 $('camera-motion').addEventListener('click',()=>{const enabled=$('camera-motion').getAttribute('aria-pressed')!=='true';$('camera-motion').setAttribute('aria-pressed',String(enabled));$('camera-motion').textContent='視点の揺れ '+(enabled?'ON':'OFF');refreshLook();});
 async function boot(){
-  try{const {createView}=await import('./view.mjs?v=0.35');viewFactory=createView;view=createView($('stage'),viewOptions());view.render(state);updateUI();}
+  try{const {createView}=await import('./view.mjs?v=0.36');viewFactory=createView;view=createView($('stage'),viewOptions());view.render(state);updateUI();}
   catch(error){$('load-error').hidden=false;$('load-error').textContent='3D画面を起動できませんでした。WebGLに対応したブラウザで、このページを開き直してください。';$('start').textContent='3Dの起動に失敗';console.error(error);}
   requestAnimationFrame(frame);
 }
-function frame(now){
-  const delta=lastFrame?Math.min((now-lastFrame)/1000,.1):0;lastFrame=now;
-  if(state.phase==='running'){
-    accumulator+=delta*(Number($('speed').value)/.1);
-    while(accumulator>=STEP){if(isLabMode()&&labRun?.status==='running')advanceLabRun(labRun,STEP);else tick(state,STEP);accumulator-=STEP;}
-    dirty=true;
+function rememberLabCompletion(){
+  if(!isLabMode()||labRun?.status!=='complete'||labLastComplete===labRun)return;
+  labLastComplete=labRun;labReplayRemaining=LAB_REPLAY_GAP_SECONDS;
+}
+function advancePlayback(delta){
+  if(isLabMode()&&labRun?.status==='complete'){
+    rememberLabCompletion();
+    if(!labPaused){
+      labReplayRemaining=Math.max(0,labReplayRemaining-delta);
+      if(labReplayRemaining<=1e-9)startLabCase();
+    }
+    return;
   }
+  if(state.phase==='running'){
+    accumulator+=Math.min(delta,.1)*(Number($('speed').value)/.1);
+    while(accumulator>=STEP&&state.phase==='running'){
+      if(isLabMode()&&labRun?.status==='running')advanceLabRun(labRun,STEP);else tick(state,STEP);
+      accumulator-=STEP;
+    }
+    rememberLabCompletion();dirty=true;
+  }
+}
+function frame(now){
+  const delta=lastFrame?Math.max(0,(now-lastFrame)/1000):0;lastFrame=now;
+  advancePlayback(delta);
   if(dirty){if(view)view.render(state);positionParryEffect();if(now-lastUi>100||state.phase!=='running'){updateUI();lastUi=now;}dirty=false;}
   requestAnimationFrame(frame);
 }
@@ -290,6 +325,6 @@ if(matchMedia('(prefers-reduced-motion: reduce)').matches){$('camera-motion').se
 $('camera-motion').disabled=$('look').value!=='reference'||matchMedia('(prefers-reduced-motion: reduce)').matches;
 if(pageParams.has('lab'))$('mode').value='lab';
 if(pageParams.has('test')){
-  window.__boxingTest={snapshot:()=>structuredClone(state),keymap:()=>({...keyMap}),target:()=>target,lab:()=>labRun?structuredClone({caseIndex:labRun.caseIndex,status:labRun.status,defenseIssuedAt:labRun.defenseIssuedAt,parryStart:labRun.parryStart,tapStart:labRun.tapStart,preCueMotion:labRun.preCueMotion,punchStartAt:labRun.punchStartAt,leadFootStartAt:labRun.leadFootStartAt,bodyStartAt:labRun.bodyStartAt,leadFootPeak:labRun.leadFootPeak,bodyPeak:labRun.bodyPeak,impact:labRun.impact,rebound:labRun.rebound,checks:labRun.checks}):null,parryEffect:()=>parryEffectTarget&&view?{...parryEffectTarget,anchor:view.gloveScreenPosition(parryEffectTarget.fighter,parryEffectTarget.side)}:null,presentation:()=>view?.presentationState(),guardWindow:(fighter=0)=>view?.guardWindow(fighter)||null,advance(t,cpuEnabled=false){for(let n=0;n<Math.round(t/STEP);n++){if(isLabMode()&&labRun?.status==='running')advanceLabRun(labRun,STEP);else tick(state,STEP,{cpuEnabled});}if(view)view.render(state);updateUI();positionParryEffect();},reset(options){labRun=null;state=createMatch(options);lastEvent=0;if(view)view.render(state);updateUI();positionParryEffect();},ready:()=>!!view};
+  window.__boxingTest={playback:()=>({paused:labPaused,remaining:labReplayRemaining,completed:!!labLastComplete}),elapse(seconds){for(let t=0;t<seconds;t+=.01)advancePlayback(Math.min(.01,seconds-t));if(view)view.render(state);updateUI();},snapshot:()=>structuredClone(state),keymap:()=>({...keyMap}),target:()=>target,lab:()=>labRun?structuredClone({caseIndex:labRun.caseIndex,status:labRun.status,defenseIssuedAt:labRun.defenseIssuedAt,parryStart:labRun.parryStart,tapStart:labRun.tapStart,preCueMotion:labRun.preCueMotion,punchStartAt:labRun.punchStartAt,leadFootStartAt:labRun.leadFootStartAt,bodyStartAt:labRun.bodyStartAt,leadFootPeak:labRun.leadFootPeak,bodyPeak:labRun.bodyPeak,impact:labRun.impact,rebound:labRun.rebound,checks:labRun.checks}):null,parryEffect:()=>parryEffectTarget&&view?{...parryEffectTarget,anchor:view.gloveScreenPosition(parryEffectTarget.fighter,parryEffectTarget.side)}:null,presentation:()=>view?.presentationState(),guardWindow:(fighter=0)=>view?.guardWindow(fighter)||null,advance(t,cpuEnabled=false){for(let n=0;n<Math.round(t/STEP);n++){if(isLabMode()&&labRun?.status==='running')advanceLabRun(labRun,STEP);else tick(state,STEP,{cpuEnabled});}rememberLabCompletion();if(view)view.render(state);updateUI();positionParryEffect();},reset(options){labRun=null;labPaused=false;labReplayRemaining=null;labLastComplete=null;state=createMatch(options);lastEvent=0;if(view)view.render(state);updateUI();positionParryEffect();},ready:()=>!!view};
 }
 buildKeySettings();updateUI();boot();
