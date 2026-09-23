@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,HEAD_BLOCK,PARRY,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,parryStatus,clamp} from './core.mjs?v=0.41';
+import {MOVES,HEAD_BLOCK,PARRY,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,leftBlockMotion,parryStatus,clamp} from './core.mjs?v=0.43';
 import {REFERENCE_LOOK as LOOK,bodyRhythm,addReferenceArena,addReferenceGlove} from './reference-look.mjs?v=0.41';
 import {HAND_TURN,handTurnAmount,gloveOrientation,forearmOrientation,parryArmPose,parryTapAmount} from './hand-orientation.mjs?v=0.41';
 
@@ -89,12 +89,12 @@ export function createView(container,{reference=false,cameraMotion=true}={}){
       const f=s.fighters[i],a=actors[i];a.root.position.set(0,0,f.z);a.root.rotation.y=f.face===1?0:Math.PI;
       const attack=f.attack,m=attack?MOVES[attack.id]:null;
       const drive=attack&&!attack.feint?Math.sin(Math.PI*clamp(attack.t/(attack.wind+attack.recover),0,1))*.1:0;
-      const headX=slipOffset(f),angles=stanceAngles(f),jabFoot=leadFootMotion(f),jabBody=jabBodyMotion(f);
+      const headX=slipOffset(f),angles=stanceAngles(f),jabFoot=leadFootMotion(f),jabBody=jabBodyMotion(f),blockTurn=leftBlockMotion(f);
       const rhythm=bodyRhythm(s.time,i,reference&&idleHands);
-      const bodyYaw=angles.bodyYaw+jabBody.turn,jabLinked=attack?.id==='jab'||jabBody.progress>0;
+      const bodyYaw=angles.bodyYaw+jabBody.turn+blockTurn.turn,jabLinked=attack?.id==='jab'||jabBody.progress>0;
       const shoulderAdvance=jabLinked?jabBody.chestForward:drive,headAdvance=jabLinked?jabBody.headForward:drive*.35;
       if(a.torso){a.torso.position.set(rhythm.x*.5,rhythm.y*.4,jabBody.hipForward);a.torso.rotation.y=bodyYaw;a.upperBody.position.set(rhythm.x,rhythm.y,jabBody.chestForward);a.upperBody.rotation.set(0,bodyYaw,rhythm.roll);}
-      if(a.head){a.head.position.set(headX+rhythm.x,1.65+rhythm.y,headAdvance);a.head.rotation.z=-headX*.3+rhythm.roll;a.head.rotation.y=jabBody.turn*.35;a.chest.rotation.z=-headX*.12;}
+      if(a.head){a.head.position.set(headX+rhythm.x,1.65+rhythm.y,headAdvance);a.head.rotation.z=-headX*.3+rhythm.roll;a.head.rotation.y=jabBody.turn*.35+blockTurn.turn*.35;a.chest.rotation.z=-headX*.12;}
       for(const leg of a.legs){
         const sign=leg.side==='L'?1:-1;
         const [hipX,hipZ]=rotateXZ(sign*.15,0,bodyYaw),[kneeX,kneeZ]=rotateXZ(sign*.19,.02,angles.bodyYaw),[footX,footZ]=rotateXZ(sign*.26,.03,angles.bodyYaw);
@@ -131,11 +131,12 @@ export function createView(container,{reference=false,cameraMotion=true}={}){
           hand[2]+((closeGuard?LOOK.guardForward:HEAD_BLOCK.visualGloveForward)+guardDepth-HEAD_BLOCK.gloveForward)*visualBlock,
         ];
         const blockTuck=visualBlock*(1-clamp(handTravel/.18,0,1));
-        const tuckedElbow=[sign*HEAD_BLOCK.elbowX,HEAD_BLOCK.elbowY,HEAD_BLOCK.elbowForward];
+        const [tuckX,tuckZ]=rotateXZ(sign*HEAD_BLOCK.elbowX,HEAD_BLOCK.elbowForward,blockTurn.turn);
+        const tuckedElbow=[tuckX-(side==='L'?blockTurn.gloveInward*.5:0),HEAD_BLOCK.elbowY,tuckZ];
         const elbow=openElbow.map((value,index)=>value+(tuckedElbow[index]-value)*blockTuck);
         // Keep the first-person upper-arm attachment behind the eye, preventing
         // a cut cylinder cap in the near plane while keeping the arm connected.
-        const armRoot=reference&&i===0?[sign*.30,shoulder[1],-.24]:shoulder;
+        const armRoot=reference&&i===0?[sign*.30*Math.cos(blockTurn.turn),shoulder[1],-.24-sign*.30*Math.sin(blockTurn.turn)]:shoulder;
         setSegment(a.arms[side].upper,armRoot,elbow);setSegment(a.arms[side].forearm,elbow,renderedHand);a.elbows[side].position.set(...elbow);
         const parry=parryStatus(f,side),redirected=f.deflection[side]?.trajectory==='parry-down';
         let glovePitch=active&&m.kind==='upper'?-.8:redirected?.32:parry?.phase==='tap'?.18:parry?.phase==='prepare'?.04:-.15+.12*blockTuck;

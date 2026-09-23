@@ -171,7 +171,7 @@ test('Attacks and footwork cannot start together; fighters never cross',()=>{
   const d=match();for(let i=0;i<15;i++){requestStep(d,0,'in');requestStep(d,1,'in');run(d,2.3);assert.ok(distance(d)>=.7199);assert.ok(d.fighters[0].z>d.fighters[1].z);}
 });
 test('Equal-time double KO is a draw; neither player is resolved first',()=>{
-  const s=match();for(const f of s.fighters){f.hp=4;defend(f,'R','body');}requestAttack(s,0,'jab');requestAttack(s,1,'jab');run(s,4.2);assert.equal(s.winner,'draw');assert.deepEqual(s.fighters.map(f=>f.hp),[0,0]);assert.equal(s.events.length,2);
+  const s=match();for(const f of s.fighters){f.hp=4;defend(f,'L','body');defend(f,'R','body');}requestAttack(s,0,'jab');requestAttack(s,1,'jab');run(s,4.2);assert.equal(s.winner,'draw');assert.deepEqual(s.fighters.map(f=>f.hp),[0,0]);assert.equal(s.events.length,2);
 });
 test('CPU observation contains neither private reservations nor early move identity',()=>{
   const s=match();requestAttack(s,0,'cross','body');requestAttack(s,0,'hookR');const o=observeOpponent(s,1);assert.equal(o.action.kind,null);assert.equal(o.action.target,null);assert.deepEqual(o.deflection,{L:0,R:0});assert.equal('queue' in o,false);assert.equal('id' in o.action,false);assert.equal('stamina' in o,false);

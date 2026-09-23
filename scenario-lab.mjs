@@ -1,6 +1,7 @@
 import {
   ARM_DEFLECT_TU,
   HEAD_BLOCK,
+  LEFT_BLOCK_TURN,
   MOVES,
   PARRY,
   STEP,
@@ -13,6 +14,7 @@ import {
   visualGloveLocal,
   leadFootMotion,
   jabBodyMotion,
+  leftBlockMotion,
   punchTravelProgress,
   parryStatus,
   pauseMatch,
@@ -20,7 +22,7 @@ import {
   requestDefense,
   startMatch,
   tick,
-} from './core.mjs?v=0.41';
+} from './core.mjs?v=0.43';
 
 export const LAB_CASES=Object.freeze([
   Object.freeze({
@@ -39,11 +41,11 @@ export const LAB_CASES=Object.freeze([
   }),
   Object.freeze({
     id:'jab-left-block',number:'03',title:'相手の左ジャブ × 左手ブロッキング',
-    question:'右手を腹に固定し、左手を腹の位置から顔へ上げてブロッキングした場合、左ジャブを止められるか。',
-    defense:'左手ブロッキングのみ',viewLabel:'左手 顔へ・右手 腹',defenseAt:null,leftBlockAt:1,
+    question:'体を右へひねり、左手を顔の内側へ運ぶブロッキングで、左ジャブを少し横へずらせるか。',
+    defense:'左手ブロッキング＋体の右回旋',viewLabel:'左手 内側へ・体は右回旋',defenseAt:null,leftBlockAt:1,
     initialGuard:Object.freeze({L:'body',R:'body'}),
-    conditions:Object.freeze(['パンチの間合い','相手は頭へ左ジャブ','開始時は両手とも腹の位置','右手は腹に固定し、左手だけ1.0 TUから顔へ上げる','着弾前に左手の顔ブロッキングを完成','他の入力なし']),
-    expected:'左手だけが腹から顔へ動く。現行の仮ルールでは左手だけではこの左ジャブを止められず、頭に4ダメージ。どちらの腕も弾かれず、相手の左腕は通常の戻りへ進む。',
+    conditions:Object.freeze(['パンチの間合い','相手は頭へ左ジャブ','開始時は両手とも腹の位置','1.0 TUから左手を顔へ上げ、体を右へ12°ひねって左拳を内側へ寄せる','右手は腹の高さを維持し、着弾前に左手の形を完成','他の入力なし']),
+    expected:'左手が腹から顔へ上がる間に体が右へ回り、左拳が内側へ寄る。接触後、相手の左拳は横へ小さくずれて通常の戻りへ進む。仮ダメージ1。パーリングとは異なり、どちらの腕も弾かれない。回旋角・ずれ幅・ダメージは本人確認待ち。',
   }),
 ]);
 
@@ -62,6 +64,7 @@ const captureImpact=(state,event)=>({
   attackerBody:jabBodyMotion(state.fighters[1]),
   defenderRightGlove:gloveLocal(state.fighters[0],'R').slice(),
   defenderLeftGlove:gloveLocal(state.fighters[0],'L').slice(),
+  defenderTurn:leftBlockMotion(state.fighters[0]),
 });
 
 const captureRebound=(state,impact)=>{
@@ -101,9 +104,9 @@ function completeChecks(run){
     {label:'相手のジャブが通常の戻りを完了',pass:state.fighters[1].attack===null&&currentDefense(state.fighters[0],'R')==='block'},
   ];
   return [
-    {label:'左手だけが腹から顔へ上がり、右手は腹に留まった',pass:run.leftBlockIssuedAt!==null&&run.leftBlockStart&&run.leftBlockMidpointY>run.leftBlockStart[1]+.2&&run.leftBlockMidpointY<impact?.defenderLeftGlove[1]-.2&&impact.defenderLeftGlove[1]-run.leftBlockStart[1]>=.5&&run.rightGloveStart&&Math.hypot(...impact.defenderRightGlove.map((v,i)=>v-run.rightGloveStart[i]))<.01},
-    {label:'着弾前に左手の顔ブロッキングが完成',pass:impact?.defenderLeftDefense==='block'&&impact?.defenderRightDefense==='body'&&run.leftBlockIssuedAt+HEAD_BLOCK.transition<impact.time},
-    {label:'左手だけでは止まらず、頭に4ダメージ',pass:event?.type==='hit'&&event?.target==='head'&&event?.damage===4&&impact?.playerHp===96},
+    {label:'左手は腹から顔へ上がり、右手は腹の高さを保った',pass:run.leftBlockIssuedAt!==null&&run.leftBlockStart&&run.leftBlockMidpointY>run.leftBlockStart[1]+.2&&run.leftBlockMidpointY<impact?.defenderLeftGlove[1]-.2&&impact.defenderLeftGlove[1]-run.leftBlockStart[1]>=.5&&run.rightGloveStart&&Math.abs(impact.defenderRightGlove[1]-run.rightGloveStart[1])<.01},
+    {label:'着弾前に体を右へひねり、左拳を内側へ寄せた',pass:impact?.defenderLeftDefense==='block'&&impact?.defenderRightDefense==='body'&&run.leftBlockIssuedAt+HEAD_BLOCK.transition<impact.time&&impact.defenderTurn.progress>.98&&Math.abs(impact.defenderTurn.turn)>=LEFT_BLOCK_TURN.angle*.98&&impact.defenderLeftGlove[0]<=HEAD_BLOCK.gloveX-.08},
+    {label:'左手で受けたジャブは少し横へずれ、仮ダメージ1',pass:event?.type==='block'&&event?.technique==='left-turn'&&event?.blockSide==='L'&&event?.damage===1&&impact?.playerHp===99&&run.redirectPeak>=LEFT_BLOCK_TURN.jabRedirect*.85},
     {label:'相手の左腕も自分の左右の腕も弾かれない',pass:impact?.attackerLeftDeflection===0&&impact?.defenderLeftDeflection===0&&impact?.defenderRightDeflection===0},
     {label:'相手のジャブが通常の戻りを完了',pass:state.fighters[1].attack===null&&currentDefense(state.fighters[0],'L')==='block'&&currentDefense(state.fighters[0],'R')==='body'},
   ];
@@ -122,7 +125,7 @@ export function createLabRun(caseIndex=0){
   startMatch(state);
   const started=requestAttack(state,1,'jab','head');
   if(!started.ok)throw new Error(started.message);
-  return {definition,caseIndex,state,status:'running',defenseIssued:false,defenseIssuedAt:null,leftBlockIssuedAt:null,leftBlockStart:null,leftBlockMidpointY:null,rightGloveStart:definition.initialGuard?gloveLocal(state.fighters[0],'R').slice():null,parryStart:null,tapStart:null,preCueMotion:{samples:0,L:motionRange(),R:motionRange()},punchStartAt:null,leadFootStartAt:null,bodyStartAt:null,leadFootPeak:0,bodyPeak:{hip:0,chest:0,head:0,turn:0},impact:null,rebound:null,checks:[]};
+  return {definition,caseIndex,state,status:'running',defenseIssued:false,defenseIssuedAt:null,leftBlockIssuedAt:null,leftBlockStart:null,leftBlockMidpointY:null,rightGloveStart:definition.initialGuard?gloveLocal(state.fighters[0],'R').slice():null,parryStart:null,tapStart:null,preCueMotion:{samples:0,L:motionRange(),R:motionRange()},punchStartAt:null,leadFootStartAt:null,bodyStartAt:null,leadFootPeak:0,bodyPeak:{hip:0,chest:0,head:0,turn:0},impact:null,rebound:null,redirectPeak:0,checks:[]};
 }
 
 export function advanceLabRun(run,dt=STEP){
@@ -158,6 +161,10 @@ export function advanceLabRun(run,dt=STEP){
     run.impact=captureImpact(run.state,event);
   }
   if(!run.impact)return run;
+  if(run.definition.id==='jab-left-block'&&attacker.attack?.redirect){
+    const u=Math.min(1,Math.max(0,(attacker.attack.t-attacker.attack.wind)/LEFT_BLOCK_TURN.redirectDuration));
+    run.redirectPeak=Math.max(run.redirectPeak,attacker.attack.redirect.lateral*Math.sin(Math.PI*u));
+  }
   if(!run.rebound&&run.definition.id==='jab-right-parry'&&run.state.fighters[1].deflection.L?.t>=PARRY.deflectPeak)run.rebound=captureRebound(run.state,run.impact);
   const recovered=run.definition.id==='jab-right-parry'
     ? deflectionRemaining(run.state.fighters[1],'L')===0&&!parryStatus(run.state.fighters[0],'R')
@@ -182,9 +189,9 @@ export function labProgress(run){
     return {phase:'defense',label:parry?.phase==='prepare'?'右手を少し上へ準備中':parry?.phase==='tap'?'右手を上から小さく落としている':'接触を確認中'};
   }
   if(run.definition.leftBlockAt!==undefined){
-    if(run.leftBlockIssuedAt===null)return {phase:'setup',label:'右手は腹に固定。左手のブロッキングを待っている'};
-    if(run.state.fighters[0].defense.L.t<HEAD_BLOCK.transition)return {phase:'defense',label:'左手を腹から顔へ上げている。右手は腹のまま'};
-    return {phase:'defense',label:'左手の顔ブロッキングが完成。右手は腹のまま'};
+    if(run.leftBlockIssuedAt===null)return {phase:'setup',label:'右手は腹。左手のブロッキングを待っている'};
+    if(run.state.fighters[0].defense.L.t<HEAD_BLOCK.transition)return {phase:'defense',label:'体を右へひねり、左手を顔の内側へ運んでいる'};
+    return {phase:'defense',label:'右回旋と左手のブロッキングが完成。右手は腹のまま'};
   }
   const attack=run.state.fighters[1].attack;
   return {phase:'attack',label:attack?.t<MOVES.jab.cue?'相手の両手が小さく動き続けている':'相手の左拳と左前足が同時に前進'};

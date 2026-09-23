@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {JAB_BODY,MOVES,STEP,TARGET_HEIGHT,gloveLocal} from './core.mjs';
+import {JAB_BODY,LEFT_BLOCK_TURN,MOVES,STEP,TARGET_HEIGHT,gloveLocal,leftBlockMotion} from './core.mjs';
 import {LAB_CASES,advanceLabRun,createLabRun,runLabToCompletion} from './scenario-lab.mjs';
 
 test('The lab presents jab defenses as separate ordered cases',()=>{
@@ -50,24 +50,31 @@ test('Case 02 proves a right block absorbs the jab without deflecting either arm
   assert.equal(run.checks.every(check=>check.pass),true);
 });
 
-test('Case 03 moves only the left glove from body to head before the jab arrives',()=>{
+test('Case 03 turns right, brings the left glove inward, and gently redirects the jab without arm deflection',()=>{
   const run=createLabRun(2),player=run.state.fighters[0];
   const startLeft=gloveLocal(player,'L').slice(),startRight=gloveLocal(player,'R').slice();
   while(run.state.time<2.5)advanceLabRun(run,STEP);
   const midLeft=gloveLocal(player,'L'),midRight=gloveLocal(player,'R');
   assert.ok(midLeft[1]>startLeft[1]+.2&&midLeft[1]<startLeft[1]+.5);
-  assert.deepEqual(midRight,startRight);
+  assert.equal(midRight[1],startRight[1]);
+  assert.ok(leftBlockMotion(player).turn<0);
   while(run.status==='running')advanceLabRun(run,STEP);
   assert.equal(run.status,'complete');
   assert.ok(run.leftBlockIssuedAt>=1&&run.leftBlockIssuedAt<1+STEP);
   assert.ok(run.leftBlockMidpointY>startLeft[1]+.2&&run.leftBlockMidpointY<run.impact.defenderLeftGlove[1]-.2);
   assert.ok(run.impact.defenderLeftGlove[1]>startLeft[1]+.5);
-  assert.deepEqual(run.impact.defenderRightGlove,startRight);
+  assert.equal(run.impact.defenderRightGlove[1],startRight[1]);
+  assert.ok(run.impact.defenderRightGlove[0]<startRight[0],'the body turn carries the right glove outward while it stays low');
+  assert.ok(run.impact.defenderTurn.turn<=-LEFT_BLOCK_TURN.angle*.98);
+  assert.ok(run.impact.defenderLeftGlove[0]<=.10,'the left glove comes toward the center line');
   assert.equal(run.impact.defenderLeftDefense,'block');
   assert.equal(run.impact.defenderRightDefense,'body');
-  assert.equal(run.impact.event.type,'hit');
-  assert.equal(run.impact.event.damage,4);
-  assert.equal(run.impact.playerHp,96);
+  assert.equal(run.impact.event.type,'block');
+  assert.equal(run.impact.event.technique,'left-turn');
+  assert.equal(run.impact.event.blockSide,'L');
+  assert.equal(run.impact.event.damage,1);
+  assert.equal(run.impact.playerHp,99);
+  assert.ok(run.redirectPeak>=LEFT_BLOCK_TURN.jabRedirect*.85);
   assert.equal(run.impact.attackerLeftDeflection,0);
   assert.equal(run.impact.defenderLeftDeflection,0);
   assert.equal(run.impact.defenderRightDeflection,0);
