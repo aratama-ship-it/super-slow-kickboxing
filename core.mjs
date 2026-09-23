@@ -40,7 +40,7 @@ const mix=(a,b,t)=>a.map((v,i)=>lerp(v,b[i],t));
 const TAU=Math.PI*2;
 const pairedWave=(t,periods,phase)=>.64*Math.sin(TAU*t/periods[0]+phase)+.36*Math.sin(TAU*t/periods[1]+phase*1.7+.8);
 const defense=mode=>({from:mode,to:mode,t:HEAD_BLOCK.transition});
-function fighter(id){return {id,stance:'orthodox',z:id===0?.65:-.65,face:id===0?-1:1,hp:100,stamina:100,defense:{L:defense('block'),R:defense('block')},parry:{L:null,R:null},deflection:{L:null,R:null},attack:null,queue:null,movement:null,slip:null,hitFlash:0,blockedFlash:0,stats:{hits:0,blocks:0,misses:0,feints:0,clashes:0,deflected:0,damage:0},lastReason:''};}
+function fighter(id){return {id,stance:'orthodox',z:id===0?.65:-.65,face:id===0?-1:1,hp:100,stamina:100,defense:{L:defense('block'),R:defense('block')},parry:{L:null,R:null},deflection:{L:null,R:null},leftTurnGuard:'body',attack:null,queue:null,movement:null,slip:null,hitFlash:0,blockedFlash:0,stats:{hits:0,blocks:0,misses:0,feints:0,clashes:0,deflected:0,damage:0},lastReason:''};}
 export function createMatch({seed=1729,mode='spar',duration=180}={}){
   return {phase:'ready',time:0,duration,mode,fighters:[fighter(0),fighter(1)],events:[],eventId:0,winner:null,seed:seed>>>0,
     ai:{next:3.5,observeAt:0,observations:[],latest:null,feintAt:null,lastReacted:null},sequence:0};
@@ -152,7 +152,7 @@ const guardWeight=(hand,mode)=>{
   return (hand.from===mode?1-u:0)+(hand.to===mode?u:0);
 };
 export function leftBlockMotion(f){
-  const progress=guardWeight(f.defense.L,'block')*guardWeight(f.defense.R,'body');
+  const progress=guardWeight(f.defense.L,'block')*guardWeight(f.defense.R,f.leftTurnGuard==='both-head'?'block':'body');
   return {progress,turn:-LEFT_BLOCK_TURN.angle*progress,gloveInward:LEFT_BLOCK_TURN.gloveInward*progress};
 }
 export function restingGlove(f,side){
@@ -350,7 +350,7 @@ function resolveLeftTurnBlocks(s){
     const punch=activePunch(f);
     if(!punch||punch.a.id!=='jab'||punch.a.target!=='head')continue;
     const d=s.fighters[1-f.id],turn=leftBlockMotion(d);
-    if(d.defense.L.to!=='block'||currentDefense(d,'R')!=='body'||turn.progress<.9||d.stamina<3||deflectionRemaining(d,'L')>0||d.parry.L||(d.attack&&MOVES[d.attack.id].side==='L'))continue;
+    if(d.defense.L.to!=='block'||currentDefense(d,'R')!==(d.leftTurnGuard==='both-head'?'block':'body')||turn.progress<.9||d.stamina<3||deflectionRemaining(d,'L')>0||d.parry.L||(d.attack&&MOVES[d.attack.id].side==='L'))continue;
     const from=gloveLocal(f,'L'),incoming=localToWorld(f,from),guard=localToWorld(d,gloveLocal(d,'L'));
     const distance=Math.hypot(...incoming.map((value,i)=>value-guard[i]));
     const lineOffset=Math.hypot(incoming[0]-guard[0],incoming[1]-guard[1]);

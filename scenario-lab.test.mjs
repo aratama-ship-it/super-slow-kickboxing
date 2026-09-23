@@ -56,7 +56,7 @@ test('Case 03 places the left glove on the jab line, holds contact briefly, then
   while(run.state.time<2.5)advanceLabRun(run,STEP);
   const midLeft=gloveLocal(player,'L'),midRight=gloveLocal(player,'R');
   assert.ok(midLeft[1]>startLeft[1]+.2&&midLeft[1]<startLeft[1]+.5);
-  assert.equal(midRight[1],startRight[1]);
+  assert.ok(midRight[1]>startRight[1]+.2,'the right glove also rises to the forehead');
   assert.ok(leftBlockMotion(player).turn<0);
   while(!run.impact)advanceLabRun(run,STEP);
   const attacker=run.state.fighters[1],contactPose=gloveLocal(attacker,'L'),contactFoot=leadFootMotion(attacker),contactBody=jabBodyMotion(attacker);
@@ -73,14 +73,13 @@ test('Case 03 places the left glove on the jab line, holds contact briefly, then
   while(run.status==='running')advanceLabRun(run,STEP);
   assert.equal(run.status,'complete');
   assert.ok(run.leftBlockIssuedAt>=.75&&run.leftBlockIssuedAt<.75+STEP);
-  assert.ok(run.leftBlockMidpointY>startLeft[1]+.2&&run.leftBlockMidpointY<run.impact.defenderLeftGlove[1]-.2);
+  assert.ok(run.leftBlockMidpointY>startLeft[1]+.2&&run.leftBlockMidpointY<run.impact.defenderLeftGlove[1]-.15);
   assert.ok(run.impact.defenderLeftGlove[1]>startLeft[1]+.4);
-  assert.equal(run.impact.defenderRightGlove[1],startRight[1]);
-  assert.ok(run.impact.defenderRightGlove[0]<startRight[0],'the body turn carries the right glove outward while it stays low');
+  assert.ok(run.impact.defenderRightGlove[1]>startRight[1]+.4,'the right glove stays beside the forehead');
   assert.ok(run.impact.defenderTurn.turn<=-LEFT_BLOCK_TURN.angle*.9);
   assert.ok(run.impact.defenderLeftGlove[0]<.05,'the left glove comes to the jab line');
   assert.equal(run.impact.defenderLeftDefense,'block');
-  assert.equal(run.impact.defenderRightDefense,'body');
+  assert.equal(run.impact.defenderRightDefense,'block');
   assert.equal(run.impact.event.type,'block');
   assert.equal(run.impact.event.technique,'left-turn');
   assert.equal(run.impact.event.blockSide,'L');
