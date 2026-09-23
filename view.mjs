@@ -1,6 +1,6 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,HEAD_BLOCK,PARRY,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,parryStatus,clamp} from './core.mjs?v=0.25';
-import {REFERENCE_LOOK as LOOK,bodyRhythm,addReferenceArena,addReferenceGlove} from './reference-look.mjs?v=0.25';
+import {MOVES,HEAD_BLOCK,PARRY,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,parryStatus,clamp} from './core.mjs?v=0.26';
+import {REFERENCE_LOOK as LOOK,bodyRhythm,addReferenceArena,addReferenceGlove} from './reference-look.mjs?v=0.26';
 
 export function createView(container,{reference=false,cameraMotion=true}={}){
   const background=reference?'#10151e':'#172a2c';
@@ -118,10 +118,12 @@ export function createView(container,{reference=false,cameraMotion=true}={}){
         const fadeU=clamp((handTravel-HEAD_BLOCK.visualHoldTravel)/HEAD_BLOCK.visualFadeTravel,0,1),fadeEase=fadeU*fadeU*(3-2*fadeU);
         const visualBlock=blockPose*(1-fadeEase);
         const closeGuard=reference&&i===0;
+        // Keep lead/rear depth in the guard; fade with the pose during punches.
+        const guardDepth=reference?(stanceRole(f,side)==='lead'?LOOK.guardLeadForward:LOOK.guardRearForward):0;
         const renderedHand=[
           hand[0]+sign*((closeGuard?LOOK.guardX:HEAD_BLOCK.visualGloveX)-HEAD_BLOCK.gloveX)*visualBlock,
           hand[1]+((closeGuard?LOOK.guardY:HEAD_BLOCK.visualGloveY)-HEAD_BLOCK.gloveY)*visualBlock,
-          hand[2]+((closeGuard?LOOK.guardForward:HEAD_BLOCK.visualGloveForward)-HEAD_BLOCK.gloveForward)*visualBlock,
+          hand[2]+((closeGuard?LOOK.guardForward:HEAD_BLOCK.visualGloveForward)+guardDepth-HEAD_BLOCK.gloveForward)*visualBlock,
         ];
         const blockTuck=visualBlock*(1-clamp(handTravel/.18,0,1));
         const tuckedElbow=[sign*HEAD_BLOCK.elbowX,HEAD_BLOCK.elbowY,HEAD_BLOCK.elbowForward];
