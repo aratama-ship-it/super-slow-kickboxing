@@ -1,6 +1,6 @@
-import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.40';
-import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.40';
-import {LAB_CASES,createLabRun,advanceLabRun,labProgress} from './scenario-lab.mjs?v=0.40';
+import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.41';
+import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.41';
+import {LAB_CASES,createLabRun,advanceLabRun,labProgress} from './scenario-lab.mjs?v=0.41';
 const $=id=>document.getElementById(id);
 let state=createMatch(),target='head',view=null,lastFrame=0,accumulator=0,lastUi=-1,lastEvent=0,dirty=true;
 let pauseReason='再開すると、同じ姿勢から続きます。';
@@ -154,7 +154,7 @@ function startLabCase(){
   $('input-feedback').textContent='固定条件で繰り返し再生中です。動作が終わると2秒待って再生します。';$('hit-feedback').textContent='接触を待っています。';$('hit-feedback').removeAttribute('data-impact');dirty=true;updateUI();
 }
 function selectLabCase(next){
-  if(next<0||next>=LAB_CASES.length||!LAB_CASES.slice(0,next).every(item=>labVerdicts[item.id]==='accepted'))return;
+  if(next<0||next>=LAB_CASES.length||(next>labCaseIndex&&!LAB_CASES.slice(0,next).every(item=>labVerdicts[item.id]==='accepted')))return;
   labCaseIndex=next;syncLabUrl();reset();
 }
 function setLabVerdict(verdict){
@@ -229,7 +229,7 @@ function updateLabUI(){
   const checks=labLastComplete?labLastComplete.checks:[{label:'再生後、'+(definition.id==='jab-right-parry'?'9':'5')+'項目を判定します',pass:null}];
   $('lab-checks').replaceChildren(...checks.map(check=>{const li=document.createElement('li');li.textContent=(check.pass===null?'○':check.pass?'✓':'×')+' '+check.label;if(check.pass!==null)li.dataset.pass=String(check.pass);return li;}));
   const complete=!!labLastComplete;$('lab-accept').disabled=!complete;$('lab-adjust').disabled=!complete;$('lab-replay').disabled=!view;
-  $('lab-prev').disabled=labCaseIndex===0;$('lab-next').disabled=labCaseIndex===LAB_CASES.length-1||verdict!=='accepted';
+  $('lab-prev').disabled=labCaseIndex===0;$('lab-next').disabled=labCaseIndex===LAB_CASES.length-1||!LAB_CASES.slice(0,labCaseIndex+1).every(item=>labVerdicts[item.id]==='accepted');
   $('lab-next').textContent=labCaseIndex===LAB_CASES.length-1?'次の組み合わせは未登録':'次の組み合わせ';
 }
 function updateUI(){
@@ -296,7 +296,7 @@ function refreshLook(){
 $('look').addEventListener('change',refreshLook);
 $('camera-motion').addEventListener('click',()=>{const enabled=$('camera-motion').getAttribute('aria-pressed')!=='true';$('camera-motion').setAttribute('aria-pressed',String(enabled));$('camera-motion').textContent='視点の揺れ '+(enabled?'ON':'OFF');refreshLook();});
 async function boot(){
-  try{const {createView}=await import('./view.mjs?v=0.40');viewFactory=createView;view=createView($('stage'),viewOptions());view.render(state);updateUI();}
+  try{const {createView}=await import('./view.mjs?v=0.41');viewFactory=createView;view=createView($('stage'),viewOptions());view.render(state);updateUI();}
   catch(error){$('load-error').hidden=false;$('load-error').textContent='3D画面を起動できませんでした。WebGLに対応したブラウザで、このページを開き直してください。';$('start').textContent='3Dの起動に失敗';console.error(error);}
   requestAnimationFrame(frame);
 }
@@ -335,7 +335,7 @@ $('camera-motion').disabled=$('look').value!=='reference'||matchMedia('(prefers-
 if(pageParams.has('lab')){
   $('mode').value='lab';
   const requestedCase=LAB_CASES.findIndex(item=>item.number===pageParams.get('case'));
-  if(requestedCase>=0&&LAB_CASES.slice(0,requestedCase).every(item=>labVerdicts[item.id]==='accepted'))labCaseIndex=requestedCase;
+  if(requestedCase>=0)labCaseIndex=requestedCase;
   syncLabUrl();
 }
 if(pageParams.has('test')){
