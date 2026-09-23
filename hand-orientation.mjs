@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES} from './core.mjs?v=0.30';
+import {MOVES} from './core.mjs?v=0.31';
 
 // Glove geometry: +Y runs from cuff to knuckles, -Z is the palm surface.
 export const HAND_TURN=Object.freeze({forearmWidth:.94,forearmDepth:1.03,wrist:Object.freeze([0,-.197,-.015])});

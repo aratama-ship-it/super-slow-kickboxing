@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as THREE from './vendor/three.module.min.js';
 import {MOVES,PARRY,STEP,createMatch,startMatch,tick,requestAttack,requestDefense,requestFeint} from './core.mjs';
 import {handTurnAmount,gloveOrientation,forearmOrientation} from './hand-orientation.mjs';
+import {addReferenceGlove} from './reference-look.mjs';
 
 const orientation=(f,side)=>gloveOrientation(side,handTurnAmount({
   attack:f.attack&&MOVES[f.attack.id].side===side?f.attack:null,deflection:f.deflection[side],parry:f.parry[side],...PARRY,
@@ -15,6 +16,17 @@ const continuous=(f,side)=>{let prev=orientation(f,side);return ()=>{const next=
 
 test('Both fighters guard with palms facing each other',()=>{
   for(const f of createMatch().fighters){near(palm(orientation(f,'L')),[-1,0,0]);near(palm(orientation(f,'R')),[1,0,0]);}
+});
+test('Glove thumbs match the hand: inward when palm-down, towards the wearer in guard',()=>{
+  for(const side of ['L','R']){
+    const glove=new THREE.Group(),material=new THREE.MeshStandardMaterial();
+    addReferenceGlove(glove,material,material,side);
+    const thumb=glove.getObjectByName('thumb-pad');assert(thumb);
+    glove.quaternion.copy(gloveOrientation(side,0));glove.updateMatrixWorld(true);
+    assert(thumb.getWorldPosition(new THREE.Vector3()).z<0,'guard thumb must be on the wearer side');
+    glove.quaternion.copy(gloveOrientation(side,1));glove.updateMatrixWorld(true);
+    assert(thumb.getWorldPosition(new THREE.Vector3()).x*(side==='L'?1:-1)<0,'palm-down thumb must face the body centre');
+  }
 });
 test('All six punches turn palm down and return smoothly, preserving the other hand',()=>{
   for(const [id,move] of Object.entries(MOVES))for(const target of ['head','body']){

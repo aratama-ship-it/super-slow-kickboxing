@@ -85,8 +85,10 @@ export function addReferenceGlove(group,material,tapeMaterial,side){
   const palm=leather.clone();palm.color.multiplyScalar(.68);palm.roughness=.54;
   part(geometry,leather,[0,.012,.015],[.13,.155,.14]);
   part(new THREE.SphereGeometry(1,28,20),palm,[0,-.035,-.104],[.098,.11,.04]);
-  const thumb=part(new THREE.SphereGeometry(1,28,20),leather,[-sign*.091,-.047,-.008],[.059,.094,.072]);
-  thumb.rotation.z=-sign*.24;
+  // Local +Y is cuff-to-knuckles and -Z is the palm: mirror the thumb,
+  // so it faces the body centre when the palm rotates towards the floor.
+  const thumb=part(new THREE.SphereGeometry(1,28,20),leather,[sign*.091,-.047,-.008],[.059,.094,.072]);
+  thumb.name='thumb-pad';thumb.rotation.z=sign*.24;
   part(new THREE.CylinderGeometry(.088,.073,.105,32,1,true),leather,[0,-.163,-.015],[1,1,1]);
   part(new THREE.CylinderGeometry(.087,.083,.038,32,1,true),tapeMaterial,[0,-.197,-.015],[1,1,1]);
   const seamMat=palm.clone();seamMat.color.multiplyScalar(.8);
