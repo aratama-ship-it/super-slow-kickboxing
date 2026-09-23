@@ -1,4 +1,7 @@
-# スーパースローボクシング v0.27
+# スーパースローボクシング v0.28
+
+v0.28では参考モードの構えで左右の手のひらを内側へ向け、パンチ・パーリングに合わせて下向きへ回し、構えへ戻る動きを追加しました。前腕も拳と一緒にひねり、手首をグローブのカフへ接続します。本人が視界の基準として採用したv0.27のカメラ・拳位置・左右間隔・前後差を保持。回転後の実形状では顔高さの中央窓はPC1440pxで12.5%、1280pxで13.0%（v0.27は13.5%）です。
+50テストで全6パンチの頭／胴狙い、左右パーリング、フェイント・弾かれからの連続した復帰を確認。実ブラウザ2サイズでも掌の向き、手首と前腕の接続、パーリング9項目、表示切替、動き低減を確認しました。攻防判定は変更していません。回転の自然さは本人確認待ちです。
 
 v0.27では参考モードの顔ガードを左右それぞれ18mm外へ広げました。左手と右手の奥行き補正は前版の3倍とし、構え中の前後差を4cmから12cmへ拡大。左手が前、右手が身体側という関係を強めています。グローブ形状・カメラ・攻防の判定は維持しています。
 PC1440px／1280pxで顔高さの中央窓9.0→13.5%を確認（水平1行の幅で、全面積ではありません）。44ルールテスト、左右前後差、パーリング9項目、表示切替、動き低減のブラウザ検証が通過しています。構えの自然さは本人の確認待ちです。
@@ -58,16 +61,18 @@ python3 -m http.server 8876 --bind 127.0.0.1 --directory "apps/game-app/super-sl
 ## コードの境界
 - core.mjs: ブラウザ非依存の戦闘規則、技データ、左右別の防御・弾かれ状態、共有する拳位置、公開観測、CPU。
 - view.mjs: Three.js描画。表示用の拳位置はcore.mjsのvisualGloveLocal、接触判定はcore.mjsのgloveLocalを使い、小動作を判定から分離する。
+- hand-orientation.mjs: 参考モードの掌の向き、旋回量、前腕のひねりを計算する描画専用モジュール。
 - app.mjs: 入力、固定刻みの更新、停止、UI。世界時間とUI反応を分離。
 - keymap.mjs: 19操作の既定キー、保存値の検証、表示名、重複時の入れ替え。
 - scenario-lab.mjs: 検証ケースの固定条件、再生手順、接触時の観測、復帰条件、ケース別の機械判定。
 - core.test.mjs: node標準の意味的なルール検証。
 - keymap.test.mjs: キー設定の完全性、壊れた保存値からの復帰、重複キーの入れ替えを検証。
 - scenario-lab.test.mjs: ケース順、パーリング時の片腕だけの弾かれ、ブロッキング時の双方非弾きを検証。
+- hand-orientation.test.mjs: 左右の掌の向き、全パンチとパーリング、フェイント・弾かれからの連続した復帰、前腕の軸を検証。
 - vendor/: このワークスペースの既存three 0.185.1から2モジュールを複製。MITライセンスを同梱。出典 https://github.com/mrdoob/three.js/tree/r185 と公式 https://threejs.org/docs/ を参照。モデル・テクスチャの第三者素材は未使用。
 
 ## 検証
-`node --test "apps/game-app/super-slow-kickboxing/boxing/core.test.mjs" "apps/game-app/super-slow-kickboxing/boxing/keymap.test.mjs" "apps/game-app/super-slow-kickboxing/boxing/scenario-lab.test.mjs"` をワークスペース直下から実行。
+`node --test "apps/game-app/super-slow-kickboxing/boxing/core.test.mjs" "apps/game-app/super-slow-kickboxing/boxing/keymap.test.mjs" "apps/game-app/super-slow-kickboxing/boxing/scenario-lab.test.mjs" "apps/game-app/super-slow-kickboxing/boxing/hand-orientation.test.mjs"` をワークスペース直下から実行。
 v0.7は32テスト全通過。準備／払い／戻り、左右の軌道、連打やガード切替による中断禁止、早出し・遅出し・逆の手・距離外、頭への直線だけの接触、空振りコスト、フェイント誘発、同時パーリング、CPUの遅延した未判明初動からの予測を検証。v0.6のパンチ衝突と弾かれ制約も維持。
 v0.8では自分のグローブを赤#c74a3a、相手のグローブを青#3f7fbeへ変更。リング背景#172a2cとのコントラスト比は赤3.18:1、青3.55:1。UIの「あなた」「CPU」、一人称の手前／相手の全身という形と位置も併用し、色だけに識別を依存しない。
 v0.9では頭／胴の狙い切替を左Shiftの初期キーへ追加し、既存のキー設定から変更可能にした。ルールとキー設定の33テストは全通過。1440px／390pxの実ブラウザで、頭→胴→頭の切替、胴ジャブの実行中に頭ストレートを予約して両方の狙いが保持されること、狙い切替をTへ再登録して画面表示と操作が更新されること、横溢れ0px、ページエラー0件を確認。`validation/target-key-browser-check.json`へ記録した。初期画面のdesign-lintはNG 0・WARN 0・測定不可0。

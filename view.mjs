@@ -1,6 +1,7 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,HEAD_BLOCK,PARRY,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,parryStatus,clamp} from './core.mjs?v=0.27';
-import {REFERENCE_LOOK as LOOK,bodyRhythm,addReferenceArena,addReferenceGlove} from './reference-look.mjs?v=0.27';
+import {MOVES,HEAD_BLOCK,PARRY,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,parryStatus,clamp} from './core.mjs?v=0.28';
+import {REFERENCE_LOOK as LOOK,bodyRhythm,addReferenceArena,addReferenceGlove} from './reference-look.mjs?v=0.28';
+import {HAND_TURN,handTurnAmount,gloveOrientation,forearmOrientation} from './hand-orientation.mjs?v=0.28';
 
 export function createView(container,{reference=false,cameraMotion=true}={}){
   const background=reference?'#10151e':'#172a2c';
@@ -67,6 +68,10 @@ export function createView(container,{reference=false,cameraMotion=true}={}){
       a.shoulders[side]=ellipsoid(root,skin,[0,0,0],[.115,.12,.125]);
       a.shoulders[side].visible=!player;
       const upper=segment(root,skin,.095,.075),forearm=segment(root,skin,.08,.055);a.arms[side]={upper,forearm};
+      if(reference){
+        const inner=skin.clone();inner.color.multiplyScalar(.9);
+        mesh(new THREE.CylinderGeometry(.056,.081,1,12,1,true,Math.PI-Math.PI/8,Math.PI/4),inner,forearm);
+      }
       a.elbows[side]=ellipsoid(root,seams,[0,0,0],[.067,.067,.067]);
       const glove=new THREE.Group();root.add(glove);a.gloves[side]=glove;
       if(reference){addReferenceGlove(glove,gloveMat,ivory,side);continue;}
@@ -134,12 +139,16 @@ export function createView(container,{reference=false,cameraMotion=true}={}){
         setSegment(a.arms[side].upper,armRoot,elbow);setSegment(a.arms[side].forearm,elbow,renderedHand);a.elbows[side].position.set(...elbow);
         const parry=parryStatus(f,side),redirected=f.deflection[side]?.trajectory==='parry-down';
         let glovePitch=active&&m.kind==='upper'?-.8:redirected?.32:parry?.phase==='tap'?.18:parry?.phase==='prepare'?.04:-.15+.12*blockTuck;
-        if(reference){
-          const extension=clamp(handTravel/.7,0,1);
-          const punchPitch=m?.kind==='upper'?.35:m?.kind==='hook'?1.1:1.35;
-          glovePitch=parry?glovePitch:-.08+(punchPitch+.08)*extension;
-        }
         a.gloves[side].position.set(...renderedHand);a.gloves[side].rotation.set(glovePitch,(side==='L'?-.12:.12)*(1-.45*blockTuck),sign*(.1-.05*blockTuck));
+        if(reference){
+          const turn=handTurnAmount({travel:handTravel,active,deflected:!!f.deflection[side],parry:f.parry[side],...PARRY});
+          a.gloves[side].quaternion.copy(gloveOrientation(side,turn));
+          const palm=new THREE.Vector3(0,0,-1).applyQuaternion(a.gloves[side].quaternion);
+          const wrist=new THREE.Vector3(...HAND_TURN.wrist).applyQuaternion(a.gloves[side].quaternion).add(new THREE.Vector3(...renderedHand)).toArray();
+          setSegment(a.arms[side].forearm,elbow,wrist);
+          a.arms[side].forearm.quaternion.copy(forearmOrientation(elbow,wrist,palm));
+          a.arms[side].forearm.scale.x=HAND_TURN.forearmWidth;a.arms[side].forearm.scale.z=HAND_TURN.forearmDepth;
+        }
       }
       a.gloveMat.emissive.set(f.hitFlash>.1?'#512414':f.blockedFlash>.1?'#183b30':'#000000');
     }
@@ -200,7 +209,7 @@ export function createView(container,{reference=false,cameraMotion=true}={}){
       while(right<samples&&!blocked[right+1])right++;
     }
     return {reference,cameraMotion:cameraMotion&&idleHands,camera:camera.position.toArray(),cameraRotation:camera.rotation.toArray().slice(0,3),
-      hands:actors.map(a=>Object.fromEntries(['L','R'].map(side=>[side,{glove:a.gloves[side].position.toArray(),rotation:a.gloves[side].rotation.toArray().slice(0,3),elbow:a.elbows[side].position.toArray(),shoulder:a.shoulders[side].position.toArray()}]))),
+      hands:actors.map(a=>Object.fromEntries(['L','R'].map(side=>[side,{glove:a.gloves[side].position.toArray(),rotation:a.gloves[side].rotation.toArray().slice(0,3),quaternion:a.gloves[side].quaternion.toArray(),palm:new THREE.Vector3(0,0,-1).applyQuaternion(a.gloves[side].quaternion).toArray(),forearmQuaternion:a.arms[side].forearm.quaternion.toArray(),wrist:a.root.worldToLocal(a.gloves[side].localToWorld(new THREE.Vector3(...HAND_TURN.wrist))).toArray(),forearmTip:a.root.worldToLocal(a.arms[side].forearm.localToWorld(new THREE.Vector3(0,.5,0))).toArray(),elbow:a.elbows[side].position.toArray(),shoulder:a.shoulders[side].position.toArray()}]))),
       head:actors[1].head.position.toArray(),headVisibleThroughGuard:!blocked[center],
       headGapRatio:blocked[center]?0:(right-left)/samples,headRowGloveCoverage:blocked.filter(Boolean).length/blocked.length,
       drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles};
