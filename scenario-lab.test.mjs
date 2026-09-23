@@ -4,9 +4,9 @@ import {JAB_BODY,MOVES,TARGET_HEIGHT} from './core.mjs';
 import {LAB_CASES,runLabToCompletion} from './scenario-lab.mjs';
 
 test('The lab presents jab defenses as separate ordered cases',()=>{
-  assert.equal(LAB_CASES.length,2);
-  assert.deepEqual(LAB_CASES.map(item=>item.id),['jab-right-parry','jab-right-block']);
-  assert.deepEqual(LAB_CASES.map(item=>item.number),['01','02']);
+  assert.equal(LAB_CASES.length,3);
+  assert.deepEqual(LAB_CASES.map(item=>item.id),['jab-right-parry','jab-right-block','jab-left-block']);
+  assert.deepEqual(LAB_CASES.map(item=>item.number),['01','02','03']);
 });
 
 test('Case 01 proves the lower face target, continuous guard motion, synchronized foot and body work, and the 80% parry',()=>{
@@ -45,6 +45,21 @@ test('Case 02 proves a right block absorbs the jab without deflecting either arm
   assert.equal(run.impact.event.defense,'block');
   assert.equal(run.impact.event.damage,1);
   assert.equal(run.impact.attackerLeftDeflection,0);
+  assert.equal(run.impact.defenderRightDeflection,0);
+  assert.equal(run.checks.length,5);
+  assert.equal(run.checks.every(check=>check.pass),true);
+});
+
+test('Case 03 isolates the left head guard and shows the current right-hand-only jab coverage',()=>{
+  const run=runLabToCompletion(2);
+  assert.equal(run.status,'complete');
+  assert.equal(run.impact.defenderLeftDefense,'block');
+  assert.equal(run.impact.defenderRightDefense,'body');
+  assert.equal(run.impact.event.type,'hit');
+  assert.equal(run.impact.event.damage,4);
+  assert.equal(run.impact.playerHp,96);
+  assert.equal(run.impact.attackerLeftDeflection,0);
+  assert.equal(run.impact.defenderLeftDeflection,0);
   assert.equal(run.impact.defenderRightDeflection,0);
   assert.equal(run.checks.length,5);
   assert.equal(run.checks.every(check=>check.pass),true);
