@@ -1,8 +1,8 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES} from './core.mjs?v=0.31';
+import {MOVES} from './core.mjs?v=0.32';
 
 // Glove geometry: +Y runs from cuff to knuckles, -Z is the palm surface.
-export const HAND_TURN=Object.freeze({forearmWidth:.94,forearmDepth:1.03,wrist:Object.freeze([0,-.197,-.015])});
+export const HAND_TURN=Object.freeze({parryTurnTapRatio:.5,forearmWidth:.94,forearmDepth:1.03,wrist:Object.freeze([0,-.197,-.015])});
 const smooth=value=>{const u=Math.max(0,Math.min(1,value));return u*u*(3-2*u);};
 const down=new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(
   new THREE.Vector3(-1,0,0),new THREE.Vector3(0,0,1),new THREE.Vector3(0,1,0)));
@@ -18,7 +18,8 @@ function punchTurn(attack){
 export function handTurnAmount({attack=null,deflection=null,parry=null,prepare=.18,tap=.55,recover=.9}){
   if(deflection)return punchTurn(deflection.interruptedAttack)*(1-smooth(deflection.t/deflection.duration));
   if(parry){
-    if(parry.t<prepare)return smooth(parry.t/prepare);
+    // Spread the twist into the downward tap instead of snapping during the lift.
+    if(parry.t<prepare+tap)return smooth(parry.t/(prepare+tap*HAND_TURN.parryTurnTapRatio));
     return 1-smooth((parry.t-prepare-tap)/recover);
   }
   return punchTurn(attack);

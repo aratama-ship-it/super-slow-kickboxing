@@ -57,12 +57,17 @@ test('Every punch keeps turning through its entire forward stroke, including fat
     a.t=a.wind;near(palm(orientation(f,move.side)),[0,-1,0]);
   }
 });
-test('Left and right parries turn down during preparation, hold, then return inward',()=>{
+test('Parries keep turning into the tap at a controlled speed, arrive palm-down, then return',()=>{
   for(const side of ['L','R']){
-    const s=match(),f=s.fighters[0];requestDefense(s,0,side,'parry');const check=continuous(f,side);
-    run(s,.2,check);near(palm(orientation(f,side)),[0,-1,0]);
-    run(s,.5,()=>{check();near(palm(orientation(f,side)),[0,-1,0]);});
+    const s=match(),f=s.fighters[0];requestDefense(s,0,side,'parry');
+    let previous=orientation(f,side),peakSpeed=0;
+    const check=()=>{const q=orientation(f,side);peakSpeed=Math.max(peakSpeed,previous.angleTo(q)/STEP);previous=q;};
+    run(s,.2,check);
+    assert(palm(orientation(f,side)).y>-.8,'the twist must still be in progress after the short lift');
+    run(s,.27,check);near(palm(orientation(f,side)),[0,-1,0]);
+    run(s,.2,()=>{check();near(palm(orientation(f,side)),[0,-1,0]);});
     run(s,1,check);assert.equal(f.parry[side],null);near(palm(orientation(f,side)),[side==='L'?-1:1,0,0]);
+    assert(peakSpeed<7,'near-camera parry rotation must not exceed 7 rad/TU (formerly 17.4)');
   }
 });
 test('Feints and parried punches do not snap their palm orientation on interruption',()=>{
