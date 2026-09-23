@@ -26,7 +26,7 @@ export const GUARD_IDLE=Object.freeze({x:.012,y:.018,z:.014,periods:Object.freez
 export const TARGET_HEIGHT=Object.freeze({head:1.64,jabHead:1.54,body:1.12});
 export const JAB_LEAD_FOOT=Object.freeze({forward:.10,lift:.018,kneeForwardRatio:.45,deflectReturn:1.1});
 export const JAB_BODY=Object.freeze({hipForward:.035,chestForward:.050,headForward:.045,turn:4*Math.PI/180});
-export const LEFT_BLOCK_TURN=Object.freeze({angle:12*Math.PI/180,gloveInward:.06,contactDistance:.29,jabRedirect:.34,redirectForward:.28,redirectDuration:.7});
+export const LEFT_BLOCK_TURN=Object.freeze({angle:12*Math.PI/180,gloveInward:.10,gloveDrop:.09,gloveReach:.06,contactDistance:.27,lineOffset:.15,hold:.22,returnDuration:1.5});
 export const HEAD_BLOCK=Object.freeze({
   gloveX:.18,gloveY:1.67,gloveForward:.22,
   visualGloveX:.155,visualGloveY:1.67,visualGloveForward:.12,
@@ -162,6 +162,10 @@ export function restingGlove(f,side){
     const [x,z]=[pose[0],pose[2]];
     pose[0]=x*Math.cos(turn.turn)+z*Math.sin(turn.turn)-(side==='L'?turn.gloveInward:0);
     pose[2]=-x*Math.sin(turn.turn)+z*Math.cos(turn.turn);
+    if(side==='L'){
+      pose[1]-=LEFT_BLOCK_TURN.gloveDrop*turn.progress;
+      pose[2]+=LEFT_BLOCK_TURN.gloveReach*turn.progress;
+    }
   }
   return pose;
 }
@@ -196,10 +200,10 @@ export function gloveLocal(f,side){
   if(!a||MOVES[a.id].side!==side)return [base[0]+slipOffset(f)*.6,base[1],base[2]];
   const m=MOVES[a.id],sign=side==='L'?1:-1;
   if(a.feint)return mix(a.cancelPose,base,ease((a.t-a.feintStart)/a.feintDuration));
-  if(a.redirect){
-    const r=a.redirect,elapsed=a.t-r.startT;
-    if(elapsed<r.duration)return mix(r.from,r.peak,ease(elapsed/r.duration));
-    return mix(r.peak,base,ease((elapsed-r.duration)/(a.wind+a.recover-r.startT-r.duration)));
+  if(a.blocked){
+    const b=a.blocked,elapsed=a.t-b.startT;
+    if(elapsed<b.hold)return b.from.slice();
+    return mix(b.from,base,ease((elapsed-b.hold)/b.returnDuration));
   }
   const targetY=a.target==='head'?(a.id==='jab'?TARGET_HEIGHT.jabHead:TARGET_HEIGHT.head):TARGET_HEIGHT.body;
   const end=[sign*.025,targetY,m.reach-.13];
@@ -278,6 +282,12 @@ export function leadFootMotion(f){
       const from=a.cancelFoot||{forward:0,lift:0},u=ease((a.t-a.feintStart)/a.feintDuration);
       return {forward:lerp(from.forward,0,u),lift:lerp(from.lift,0,u),phase:'return'};
     }
+    if(a.blocked){
+      const b=a.blocked,elapsed=a.t-b.startT;
+      if(elapsed<b.hold)return {...b.foot,phase:'blocked'};
+      const u=ease((elapsed-b.hold)/b.returnDuration);
+      return {forward:b.foot.forward*(1-u),lift:b.foot.lift*(1-u),phase:'return'};
+    }
     const m=MOVES.jab,cue=m.cue*(a.wind/m.wind);
     if(a.t<cue)return {forward:0,lift:0,phase:'ready'};
     if(a.t<a.wind){
@@ -343,11 +353,12 @@ function resolveLeftTurnBlocks(s){
     if(d.defense.L.to!=='block'||currentDefense(d,'R')!=='body'||turn.progress<.9||d.stamina<3||deflectionRemaining(d,'L')>0||d.parry.L||(d.attack&&MOVES[d.attack.id].side==='L'))continue;
     const from=gloveLocal(f,'L'),incoming=localToWorld(f,from),guard=localToWorld(d,gloveLocal(d,'L'));
     const distance=Math.hypot(...incoming.map((value,i)=>value-guard[i]));
-    if(distance>LEFT_BLOCK_TURN.contactDistance)continue;
+    const lineOffset=Math.hypot(incoming[0]-guard[0],incoming[1]-guard[1]);
+    if(distance>LEFT_BLOCK_TURN.contactDistance||lineOffset>LEFT_BLOCK_TURN.lineOffset||(guard[2]-incoming[2])*f.face<0)continue;
     punch.a.hit=true;
     hits.push({who:f.id,move:'jab',target:'head',type:'block',defense:'block',technique:'left-turn',blockSide:'L',damage:0,drain:7,
-      punchProgress:punchTravelProgress(f),gloveDistance:distance,redirectFrom:from.slice(),
-      reason:'左手でジャブに触れ、体の右回旋で相手の拳を向かって右へ外した'});
+      punchProgress:punchTravelProgress(f),gloveDistance:distance,lineOffset,blockedFrom:from.slice(),
+      reason:'左手をジャブの進路に置いて受け止め、相手の拳を短く止めて戻した'});
   }
   applyContacts(s,hits);
 }
@@ -380,9 +391,8 @@ function applyContacts(s,hits){
     else if(h.type==='block'){d.stats.blocks++;d.blockedFlash=1;}
     else f.stats.misses++;
     f.stats.damage+=h.damage;event(s,h);
-    if(h.redirectFrom&&f.attack){
-      const from=h.redirectFrom,peak=[from[0]+LEFT_BLOCK_TURN.jabRedirect,from[1],from[2]+LEFT_BLOCK_TURN.redirectForward];
-      f.attack.redirect={from,peak,startT:f.attack.t,duration:LEFT_BLOCK_TURN.redirectDuration};
+    if(h.blockedFrom&&f.attack){
+      f.attack.blocked={from:h.blockedFrom,startT:f.attack.t,hold:LEFT_BLOCK_TURN.hold,returnDuration:LEFT_BLOCK_TURN.returnDuration,foot:leadFootMotion(f)};
     }
     if(h.deflectSide)deflectHand(f,h.deflectSide,ARM_DEFLECT_TU,h.deflectTrajectory,s.time);
   }
@@ -391,7 +401,7 @@ export function observeOpponent(s,who){
   const f=s.fighters[1-who],a=f.attack,m=a?MOVES[a.id]:null;
   const exposed=a&&!a.feint&&a.t>=m.cue*(a.wind/m.wind);
   return {time:s.time,distance:distance(s),defense:{L:currentDefense(f,'L'),R:currentDefense(f,'R')},parry:{L:parryStatus(f,'L')?.phase||null,R:parryStatus(f,'R')?.phase||null},deflection:{L:deflectionRemaining(f,'L'),R:deflectionRemaining(f,'R')},moving:!!f.movement,slipping:!!f.slip,
-    action:a?{phase:a.feint?'return':a.t<a.wind?'windup':'return',side:m.side,kind:exposed?m.kind:null,target:exposed?a.target:null,serial:a.serial}:null};
+    action:a?{phase:a.feint||a.blocked?'return':a.t<a.wind?'windup':'return',side:m.side,kind:exposed?m.kind:null,target:exposed?a.target:null,serial:a.serial}:null};
 }
 function random(s){s.seed=(Math.imul(s.seed,1664525)+1013904223)>>>0;return s.seed/4294967296;}
 function cpu(s){
@@ -459,7 +469,7 @@ export function tick(s,dt=STEP,{cpuEnabled=true}={}){
   }
   for(const f of s.fighters){
     const a=f.attack;
-    if(a&&(a.feint?a.t>=a.feintStart+a.feintDuration:a.t>=a.wind+a.recover))f.attack=null;
+    if(a&&(a.feint?a.t>=a.feintStart+a.feintDuration:a.blocked?a.t>=a.blocked.startT+a.blocked.hold+a.blocked.returnDuration:a.t>=a.wind+a.recover))f.attack=null;
     if(f.queue&&f.queue.expires<s.time)f.queue=null;
     if(!f.attack&&f.queue){const q=f.queue;f.queue=null;requestAttack(s,f.id,q.id,q.target);}
   }
@@ -468,5 +478,5 @@ export function tick(s,dt=STEP,{cpuEnabled=true}={}){
 export function attackStatus(f){
   const a=f.attack;if(!a)return {name:'動かせる',phase:'ready',progress:0};
   const m=MOVES[a.id];
-  return {name:a.feint?'引いて戻る':a.t<a.wind?m.name+'を出す':m.name+'から戻る',phase:a.feint||a.t>=a.wind?'return':'windup',progress:a.feint?(a.t-a.feintStart)/a.feintDuration:a.t/(a.wind+a.recover)};
+  return {name:a.feint?'引いて戻る':a.blocked?'受け止められて戻る':a.t<a.wind?m.name+'を出す':m.name+'から戻る',phase:a.feint||a.blocked||a.t>=a.wind?'return':'windup',progress:a.feint?(a.t-a.feintStart)/a.feintDuration:a.blocked?(a.t-a.blocked.startT)/(a.blocked.hold+a.blocked.returnDuration):a.t/(a.wind+a.recover)};
 }

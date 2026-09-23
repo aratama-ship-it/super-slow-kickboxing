@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,PARRY} from './core.mjs?v=0.41';
+import {MOVES,PARRY} from './core.mjs?v=0.45';
 
 // Glove geometry: +Y runs from cuff to knuckles, -Z is the palm surface.
 export const HAND_TURN=Object.freeze({parryTurnTapRatio:.5,forearmWidth:.94,forearmDepth:1.03,wrist:Object.freeze([0,-.197,-.015])});
@@ -10,6 +10,10 @@ const down=new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().make
 function punchTurn(attack){
   if(!attack)return 0;
   if(attack.feint)return punchTurn({...attack,feint:false,t:attack.feintStart})*(1-smooth((attack.t-attack.feintStart)/attack.feintDuration));
+  if(attack.blocked){
+    const b=attack.blocked,contactTurn=punchTurn({...attack,blocked:null,t:b.startT});
+    return contactTurn*(1-smooth((attack.t-b.startT-b.hold)/b.returnDuration));
+  }
   if(attack.t>=attack.wind)return 1-smooth((attack.t-attack.wind)/attack.recover);
   const move=MOVES[attack.id],cue=move.cue*(attack.wind/move.wind);
   return smooth((attack.t-cue)/(attack.wind-cue));

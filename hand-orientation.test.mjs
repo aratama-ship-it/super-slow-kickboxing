@@ -4,6 +4,7 @@ import * as THREE from './vendor/three.module.min.js';
 import {MOVES,PARRY,STEP,createMatch,startMatch,tick,requestAttack,requestDefense,requestFeint,gloveLocal} from './core.mjs';
 import {handTurnAmount,gloveOrientation,forearmOrientation,parryArmPose,parryTapAmount,HAND_TURN} from './hand-orientation.mjs';
 import {addReferenceGlove} from './reference-look.mjs';
+import {createLabRun,advanceLabRun} from './scenario-lab.mjs';
 
 const orientation=(f,side)=>gloveOrientation(side,handTurnAmount({
   attack:f.attack&&MOVES[f.attack.id].side===side?f.attack:null,deflection:f.deflection[side],parry:f.parry[side],...PARRY,
@@ -52,6 +53,18 @@ test('All six punches turn palm down and return smoothly, preserving the other h
 test('Jab has no new rotation tell before its existing extension cue',()=>{
   const s=match(),f=s.fighters[0];requestAttack(s,0,'jab');
   run(s,MOVES.jab.cue-STEP,()=>near(palm(orientation(f,'L')),[-1,0,0]));
+});
+test('A jab stopped by the left glove holds its wrist angle, then untwists smoothly on retreat',()=>{
+  const run=createLabRun(2);
+  while(!run.impact)advanceLabRun(run,STEP);
+  const attacker=run.state.fighters[1],atContact=orientation(attacker,'L');
+  for(let n=0;n<10;n++){advanceLabRun(run,STEP);assert(atContact.angleTo(orientation(attacker,'L'))<1e-6);}
+  let previous=orientation(attacker,'L');
+  while(run.status==='running'){
+    advanceLabRun(run,STEP);
+    const next=orientation(attacker,'L');assert(previous.angleTo(next)<.4,'blocking must not snap the wrist');previous=next;
+  }
+  near(palm(orientation(attacker,'L')),[-1,0,0]);
 });
 test('Every punch keeps turning through its entire forward stroke, including fatigue',()=>{
   for(const [id,move] of Object.entries(MOVES))for(const target of ['head','body'])for(const stamina of [100,25]){

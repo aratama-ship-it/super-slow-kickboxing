@@ -11,8 +11,8 @@ import {
   currentDefense,
   deflectionRemaining,
   gloveLocal,
-  localToWorld,
-  bodyTarget,
+  restingGlove,
+  clamp,
   visualGloveLocal,
   leadFootMotion,
   jabBodyMotion,
@@ -24,7 +24,7 @@ import {
   requestDefense,
   startMatch,
   tick,
-} from './core.mjs?v=0.44';
+} from './core.mjs?v=0.45';
 
 export const LAB_CASES=Object.freeze([
   Object.freeze({
@@ -43,11 +43,11 @@ export const LAB_CASES=Object.freeze([
   }),
   Object.freeze({
     id:'jab-left-block',number:'03',title:'相手の左ジャブ × 左手ブロッキング',
-    question:'体を右へひねり、左手のグローブでジャブに触れた瞬間から、相手の拳を向かって右へ外せるか。',
+    question:'左手のグローブをジャブの進路に置き、拳を短く止めて打ってきた方向へ戻せるか。',
     defense:'左手ブロッキング＋体の右回旋',viewLabel:'左手 内側へ・体は右回旋',defenseAt:null,leftBlockAt:.75,
     initialGuard:Object.freeze({L:'body',R:'body'}),
-    conditions:Object.freeze(['パンチの間合い','相手は頭へ左ジャブ','開始時は両手とも腹の位置','0.75 TUから左手を顔へ上げ、体を右へ12°ひねって左拳を内側へ寄せる','右手は腹の高さを維持し、青い拳が赤い左グローブへ接近した時点で接触','他の入力なし']),
-    expected:'左手が腹から顔へ上がる間に体が右へ回り、左拳が内側へ寄る。ジャブが伸び切る前にグローブ同士が触れ、青い拳は接触地点から向かって右へ進んで頭を外れ、その後に戻る。ダメージ0、両者の腕は弾かれない。軌道の自然さは本人確認待ち。',
+    conditions:Object.freeze(['パンチの間合い','相手は頭へ左ジャブ','開始時は両手とも腹の位置','0.75 TUから左手を顔へ上げ、体を右へ12°ひねってジャブの進路へ置く','右手は腹の高さを維持し、青い拳が赤い左グローブへ接近した時点で接触','他の入力なし']),
+    expected:'左手が腹から顔へ上がる間に体が右へ回り、左拳がジャブの進路に入る。グローブ同士が触れると、青い拳と前足・腰は短く止まり、横へ流れず元の構えへ戻る。ダメージ0、両者の腕は弾かれない。止める長さとフォームの自然さは本人確認待ち。',
   }),
 ]);
 
@@ -106,11 +106,11 @@ function completeChecks(run){
     {label:'相手のジャブが通常の戻りを完了',pass:state.fighters[1].attack===null&&currentDefense(state.fighters[0],'R')==='block'},
   ];
   return [
-    {label:'左手は腹から顔へ上がり、右手は腹の高さを保った',pass:run.leftBlockIssuedAt!==null&&run.leftBlockStart&&run.leftBlockMidpointY>run.leftBlockStart[1]+.2&&run.leftBlockMidpointY<impact?.defenderLeftGlove[1]-.2&&impact.defenderLeftGlove[1]-run.leftBlockStart[1]>=.5&&run.rightGloveStart&&Math.abs(impact.defenderRightGlove[1]-run.rightGloveStart[1])<.01},
-    {label:'青い拳が伸び切る前に赤い左グローブへ接触',pass:impact?.defenderLeftDefense==='block'&&impact?.defenderRightDefense==='body'&&impact.defenderTurn.progress>.9&&event?.punchProgress<1&&event?.gloveDistance<=LEFT_BLOCK_TURN.contactDistance},
-    {label:'接触地点から向かって右へ進み、頭を外れた',pass:event?.type==='block'&&event?.technique==='left-turn'&&event?.blockSide==='L'&&event?.damage===0&&impact?.playerHp===100&&run.redirectPeak>=LEFT_BLOCK_TURN.jabRedirect*.95&&run.redirectForwardPeak>=LEFT_BLOCK_TURN.redirectForward*.95&&run.headClearanceMin>1},
+    {label:'左手は腹から進路へ上がり、右手は腹の高さを保った',pass:run.leftBlockIssuedAt!==null&&run.leftBlockStart&&run.leftBlockMidpointY>run.leftBlockStart[1]+.2&&run.leftBlockMidpointY<impact?.defenderLeftGlove[1]-.15&&impact.defenderLeftGlove[1]-run.leftBlockStart[1]>=.4&&run.rightGloveStart&&Math.abs(impact.defenderRightGlove[1]-run.rightGloveStart[1])<.01},
+    {label:'青い拳が伸び切る前に赤い左グローブへ接触',pass:impact?.defenderLeftDefense==='block'&&impact?.defenderRightDefense==='body'&&impact.defenderTurn.progress>.9&&event?.punchProgress<1&&event?.gloveDistance<=LEFT_BLOCK_TURN.contactDistance&&event?.lineOffset<=LEFT_BLOCK_TURN.lineOffset},
+    {label:'接触地点で短く止まり、横へ流れず元の方向へ戻った',pass:event?.type==='block'&&event?.technique==='left-turn'&&event?.blockSide==='L'&&event?.damage===0&&impact?.playerHp===100&&run.holdSamples>=10&&run.holdMaxMotion<1e-7&&run.forwardAfterBlockMax<1e-7&&run.returnPathError<1e-6&&run.retreatDistance>.4},
     {label:'相手の左腕も自分の左右の腕も弾かれない',pass:impact?.attackerLeftDeflection===0&&impact?.defenderLeftDeflection===0&&impact?.defenderRightDeflection===0},
-    {label:'相手のジャブが通常の戻りを完了',pass:state.fighters[1].attack===null&&currentDefense(state.fighters[0],'L')==='block'&&currentDefense(state.fighters[0],'R')==='body'},
+    {label:'相手のジャブが構えへの戻りを完了',pass:state.fighters[1].attack===null&&currentDefense(state.fighters[0],'L')==='block'&&currentDefense(state.fighters[0],'R')==='body'},
   ];
 }
 
@@ -127,7 +127,7 @@ export function createLabRun(caseIndex=0){
   startMatch(state);
   const started=requestAttack(state,1,'jab','head');
   if(!started.ok)throw new Error(started.message);
-  return {definition,caseIndex,state,status:'running',defenseIssued:false,defenseIssuedAt:null,leftBlockIssuedAt:null,leftBlockStart:null,leftBlockMidpointY:null,rightGloveStart:definition.initialGuard?gloveLocal(state.fighters[0],'R').slice():null,parryStart:null,tapStart:null,preCueMotion:{samples:0,L:motionRange(),R:motionRange()},punchStartAt:null,leadFootStartAt:null,bodyStartAt:null,leadFootPeak:0,bodyPeak:{hip:0,chest:0,head:0,turn:0},impact:null,rebound:null,redirectPeak:0,redirectForwardPeak:0,headClearanceMin:Infinity,checks:[]};
+  return {definition,caseIndex,state,status:'running',defenseIssued:false,defenseIssuedAt:null,leftBlockIssuedAt:null,leftBlockStart:null,leftBlockMidpointY:null,rightGloveStart:definition.initialGuard?gloveLocal(state.fighters[0],'R').slice():null,parryStart:null,tapStart:null,preCueMotion:{samples:0,L:motionRange(),R:motionRange()},punchStartAt:null,leadFootStartAt:null,bodyStartAt:null,leadFootPeak:0,bodyPeak:{hip:0,chest:0,head:0,turn:0},impact:null,rebound:null,holdSamples:0,holdMaxMotion:0,forwardAfterBlockMax:0,returnPathError:0,retreatDistance:0,checks:[]};
 }
 
 export function advanceLabRun(run,dt=STEP){
@@ -163,13 +163,18 @@ export function advanceLabRun(run,dt=STEP){
     run.impact=captureImpact(run.state,event);
   }
   if(!run.impact)return run;
-  if(run.definition.id==='jab-left-block'&&attacker.attack?.redirect){
-    const pose=gloveLocal(attacker,'L'),from=attacker.attack.redirect.from;
-    run.redirectPeak=Math.max(run.redirectPeak,pose[0]-from[0]);
-    run.redirectForwardPeak=Math.max(run.redirectForwardPeak,pose[2]-from[2]);
-    const world=localToWorld(attacker,pose),head=bodyTarget(run.state.fighters[0],'head','jab');
-    const clearance=((world[0]-head[0])/.24)**2+((world[1]-head[1])/.25)**2+((world[2]-head[2])/.27)**2;
-    run.headClearanceMin=Math.min(run.headClearanceMin,clearance);
+  if(run.definition.id==='jab-left-block'&&attacker.attack?.blocked){
+    const pose=gloveLocal(attacker,'L'),blocked=attacker.attack.blocked,from=blocked.from,elapsed=attacker.attack.t-blocked.startT;
+    if(elapsed<blocked.hold){
+      run.holdSamples++;
+      run.holdMaxMotion=Math.max(run.holdMaxMotion,Math.hypot(...pose.map((v,i)=>v-from[i])));
+    }else{
+      run.forwardAfterBlockMax=Math.max(run.forwardAfterBlockMax,pose[2]-from[2]);
+      run.retreatDistance=Math.max(run.retreatDistance,from[2]-pose[2]);
+      const base=restingGlove(attacker,'L'),axis=base.map((v,i)=>v-from[i]);
+      const u=clamp(axis.reduce((sum,v,i)=>sum+v*(pose[i]-from[i]),0)/axis.reduce((sum,v)=>sum+v*v,0),0,1);
+      run.returnPathError=Math.max(run.returnPathError,Math.hypot(...pose.map((v,i)=>v-from[i]-axis[i]*u)));
+    }
   }
   if(!run.rebound&&run.definition.id==='jab-right-parry'&&run.state.fighters[1].deflection.L?.t>=PARRY.deflectPeak)run.rebound=captureRebound(run.state,run.impact);
   const recovered=run.definition.id==='jab-right-parry'
