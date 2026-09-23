@@ -1,7 +1,7 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,HEAD_BLOCK,PARRY,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,parryStatus,clamp} from './core.mjs?v=0.32';
-import {REFERENCE_LOOK as LOOK,bodyRhythm,addReferenceArena,addReferenceGlove} from './reference-look.mjs?v=0.32';
-import {HAND_TURN,handTurnAmount,gloveOrientation,forearmOrientation} from './hand-orientation.mjs?v=0.32';
+import {MOVES,HEAD_BLOCK,PARRY,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,parryStatus,clamp} from './core.mjs?v=0.33';
+import {REFERENCE_LOOK as LOOK,bodyRhythm,addReferenceArena,addReferenceGlove} from './reference-look.mjs?v=0.33';
+import {HAND_TURN,handTurnAmount,gloveOrientation,forearmOrientation,parryArmPose} from './hand-orientation.mjs?v=0.33';
 
 export function createView(container,{reference=false,cameraMotion=true}={}){
   const background=reference?'#10151e':'#172a2c';
@@ -143,6 +143,18 @@ export function createView(container,{reference=false,cameraMotion=true}={}){
         if(reference){
           const turn=handTurnAmount({attack:active?attack:null,deflection:f.deflection[side],parry:f.parry[side],...PARRY});
           a.gloves[side].quaternion.copy(gloveOrientation(side,turn));
+          if(i===0&&f.parry[side]){
+            const p=f.parry[side],offset=idleHands?p.visualOffset||[0,0,0]:[0,0,0];
+            const baseMechanical=p.from.map((v,j)=>v+offset[j]);
+            const baseHand=[baseMechanical[0]+sign*(LOOK.guardX-HEAD_BLOCK.gloveX)*blockPose,baseMechanical[1]+(LOOK.guardY-HEAD_BLOCK.gloveY)*blockPose,baseMechanical[2]+(LOOK.guardForward+guardDepth-HEAD_BLOCK.gloveForward)*blockPose];
+            const baseOpen=[(shoulder[0]+baseMechanical[0])*.5+sign*.035,Math.min(shoulder[1],baseMechanical[1])-.17,(shoulder[2]+baseMechanical[2])*.5-.09];
+            const baseElbow=baseOpen.map((v,j)=>v+(tuckedElbow[j]-v)*blockPose);
+            const baseShoulder=[sign*.30,1.39+bodyRhythm(s.time-p.t,i,idleHands).y,-.24];
+            const pose=parryArmPose({side,shoulder:armRoot,baseShoulder,baseHand,baseElbow,hand:renderedHand,turn});
+            elbow.splice(0,3,...pose.elbow);renderedHand.splice(0,3,...pose.hand);
+            a.gloves[side].quaternion.copy(pose.quaternion);a.gloves[side].position.set(...renderedHand);
+            setSegment(a.arms[side].upper,armRoot,elbow);a.elbows[side].position.set(...elbow);
+          }
           const palm=new THREE.Vector3(0,0,-1).applyQuaternion(a.gloves[side].quaternion);
           const wrist=new THREE.Vector3(...HAND_TURN.wrist).applyQuaternion(a.gloves[side].quaternion).add(new THREE.Vector3(...renderedHand)).toArray();
           setSegment(a.arms[side].forearm,elbow,wrist);
@@ -209,7 +221,7 @@ export function createView(container,{reference=false,cameraMotion=true}={}){
       while(right<samples&&!blocked[right+1])right++;
     }
     return {reference,cameraMotion:cameraMotion&&idleHands,camera:camera.position.toArray(),cameraRotation:camera.rotation.toArray().slice(0,3),
-      hands:actors.map(a=>Object.fromEntries(['L','R'].map(side=>[side,{glove:a.gloves[side].position.toArray(),rotation:a.gloves[side].rotation.toArray().slice(0,3),quaternion:a.gloves[side].quaternion.toArray(),palm:new THREE.Vector3(0,0,-1).applyQuaternion(a.gloves[side].quaternion).toArray(),forearmQuaternion:a.arms[side].forearm.quaternion.toArray(),wrist:a.root.worldToLocal(a.gloves[side].localToWorld(new THREE.Vector3(...HAND_TURN.wrist))).toArray(),forearmTip:a.root.worldToLocal(a.arms[side].forearm.localToWorld(new THREE.Vector3(0,.5,0))).toArray(),elbow:a.elbows[side].position.toArray(),shoulder:a.shoulders[side].position.toArray()}]))),
+      hands:actors.map(a=>Object.fromEntries(['L','R'].map(side=>[side,{glove:a.gloves[side].position.toArray(),rotation:a.gloves[side].rotation.toArray().slice(0,3),quaternion:a.gloves[side].quaternion.toArray(),palm:new THREE.Vector3(0,0,-1).applyQuaternion(a.gloves[side].quaternion).toArray(),forearmQuaternion:a.arms[side].forearm.quaternion.toArray(),wrist:a.root.worldToLocal(a.gloves[side].localToWorld(new THREE.Vector3(...HAND_TURN.wrist))).toArray(),forearmTip:a.root.worldToLocal(a.arms[side].forearm.localToWorld(new THREE.Vector3(0,.5,0))).toArray(),elbow:a.elbows[side].position.toArray(),upperRoot:a.root.worldToLocal(a.arms[side].upper.localToWorld(new THREE.Vector3(0,-.5,0))).toArray(),upperTip:a.root.worldToLocal(a.arms[side].upper.localToWorld(new THREE.Vector3(0,.5,0))).toArray(),gloveAxis:new THREE.Vector3(0,1,0).applyQuaternion(a.gloves[side].quaternion).toArray(),shoulder:a.shoulders[side].position.toArray()}]))),
       head:actors[1].head.position.toArray(),headVisibleThroughGuard:!blocked[center],
       headGapRatio:blocked[center]?0:(right-left)/samples,headRowGloveCoverage:blocked.filter(Boolean).length/blocked.length,
       drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles};

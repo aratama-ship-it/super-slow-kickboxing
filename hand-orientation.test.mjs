@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,PARRY,STEP,createMatch,startMatch,tick,requestAttack,requestDefense,requestFeint} from './core.mjs';
-import {handTurnAmount,gloveOrientation,forearmOrientation} from './hand-orientation.mjs';
+import {MOVES,PARRY,STEP,createMatch,startMatch,tick,requestAttack,requestDefense,requestFeint,gloveLocal} from './core.mjs';
+import {handTurnAmount,gloveOrientation,forearmOrientation,parryArmPose,HAND_TURN} from './hand-orientation.mjs';
 import {addReferenceGlove} from './reference-look.mjs';
 
 const orientation=(f,side)=>gloveOrientation(side,handTurnAmount({
@@ -84,5 +84,40 @@ test('Forearm turns around its length while its axis still connects elbow to wri
     const axis=new THREE.Vector3(...wrist).sub(new THREE.Vector3(...elbow)).normalize();
     near(new THREE.Vector3(0,1,0).applyQuaternion(q),axis.toArray());
     assert(new THREE.Vector3(0,0,-1).applyQuaternion(q).dot(p)>.3);
+  }
+});
+
+
+test('Parry arm retracts from the shoulder with fixed bones and a nearly straight wrist',()=>{
+  for(const side of ['L','R']){
+    const s=match(),f=s.fighters[0],sign=side==='L'?1:-1;
+    requestDefense(s,0,side,'parry');
+    const offset=[sign*.018,.04,side==='L'?-.01:-.13];
+    const baseHand=f.parry[side].from.map((v,i)=>v+offset[i]),baseElbow=[sign*.12,1.2,.08],shoulder=[sign*.3,1.39,-.24];
+    const vector=a=>new THREE.Vector3(...a);
+    let previous=null,contact=null,peakSpeed=0;
+    while(f.parry[side]){
+      const p=f.parry[side],hand=gloveLocal(f,side).map((v,i)=>v+offset[i]);
+      const pose=parryArmPose({side,shoulder,baseHand,baseElbow,hand,turn:handTurnAmount({parry:p,...PARRY})});
+      const wrist=vector(HAND_TURN.wrist).applyQuaternion(pose.quaternion).add(vector(pose.hand));
+      const axis=vector([0,1,0]).applyQuaternion(pose.quaternion),forearm=wrist.clone().sub(vector(pose.elbow)).normalize();
+      const bend=axis.angleTo(forearm)*180/Math.PI;
+      assert(bend<30,'wrist must not fold to make the palm horizontal');
+      assert(vector(pose.hand).distanceTo(vector(hand))<1e-6,'keep the glove on its accepted contact path');
+      assert(Math.abs(vector(pose.elbow).distanceTo(vector(shoulder))-pose.upperLength)<1e-6);
+      assert(Math.abs(vector(pose.elbow).distanceTo(wrist)-pose.forearmLength)<1e-6);
+      assert(pose.elbow[0]*sign>0,'elbow must stay on its own side of the body');
+      if(previous){
+        peakSpeed=Math.max(peakSpeed,previous.quaternion.angleTo(pose.quaternion)/STEP);
+        assert(vector(previous.elbow).distanceTo(vector(pose.elbow))<.015,'elbow must move continuously');
+      }
+      if(p.t>=.4666&&!contact){contact={pose,bend};assert(bend<5);assert(palm(pose.quaternion).y<-.1);}
+      previous=pose;tick(s,STEP,{cpuEnabled:false});
+    }
+    assert(contact.pose.elbow[2]<baseElbow[2]-.025,'elbow must retract towards the body at contact');
+    assert(contact.pose.elbow[1]>baseElbow[1],'shoulder must raise the elbow into the tap');
+    assert(vector(previous.elbow).distanceTo(vector(baseElbow))<.002,'elbow must return to guard');
+    assert(previous.quaternion.angleTo(gloveOrientation(side,0))<.003);
+    assert(peakSpeed<7,'joint correction must preserve the slower parry');
   }
 });
