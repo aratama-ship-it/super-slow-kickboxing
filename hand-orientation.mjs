@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES} from './core.mjs?v=0.33';
+import {MOVES,PARRY} from './core.mjs?v=0.34';
 
 // Glove geometry: +Y runs from cuff to knuckles, -Z is the palm surface.
 export const HAND_TURN=Object.freeze({parryTurnTapRatio:.5,forearmWidth:.94,forearmDepth:1.03,wrist:Object.freeze([0,-.197,-.015])});
@@ -40,16 +40,26 @@ export function forearmOrientation(elbow,hand,palm){
 }
 
 
-export const PARRY_ARM=Object.freeze({elbowBack:.16,elbowLift:.13,elbowOut:.03,iterations:24});
+export const PARRY_ARM=Object.freeze({elbowBack:.16,elbowLift:.13,elbowOut:.03,tapElbowBack:.05,tapElbowOut:.03,tapDrop:.04,iterations:24});
+
+export function parryTapAmount({parry=null,prepare=.18,tap=.55,recover=.9}){
+  if(!parry)return 0;
+  if(parry.t<prepare+tap)return smooth((parry.t-prepare)/tap);
+  return 1-smooth((parry.t-prepare-tap)/recover);
+}
 
 // Solve from the shoulder through the elbow to the cuff. The glove follows
 // the forearm instead of forcing a horizontal palm onto a vertical forearm.
-export function parryArmPose({side,shoulder,baseShoulder=shoulder,baseHand,baseElbow,hand,turn}){
+export function parryArmPose({side,shoulder,baseShoulder=shoulder,baseHand,baseElbow,hand,turn,tapAmount=0}){
   const vector=values=>new THREE.Vector3(...values),root=vector(shoulder),target=vector(hand);
+  // Cancel the tap's forward drift while the elbow retracts and forearm tips.
+  target.y-=PARRY_ARM.tapDrop*tapAmount;
+  target.z-=(PARRY.tapForward-PARRY.prepareForward)*tapAmount;
   const rest=gloveOrientation(side,0),startElbow=vector(baseElbow);
   const startWrist=vector(HAND_TURN.wrist).applyQuaternion(rest).add(vector(baseHand));
   const upperLength=startElbow.distanceTo(vector(baseShoulder)),forearmLength=startElbow.distanceTo(startWrist);
   const pole=startElbow.clone().add(new THREE.Vector3((side==='L'?1:-1)*PARRY_ARM.elbowOut,PARRY_ARM.elbowLift,-PARRY_ARM.elbowBack).multiplyScalar(turn));
+  pole.add(new THREE.Vector3((side==='L'?1:-1)*PARRY_ARM.tapElbowOut,0,-PARRY_ARM.tapElbowBack).multiplyScalar(tapAmount));
   let elbow=startElbow.clone(),quaternion=rest.clone(),wrist;
   for(let n=0;n<PARRY_ARM.iterations;n++){
     const aligned=forearmOrientation(elbow.toArray(),target.toArray(),new THREE.Vector3(0,0,1));

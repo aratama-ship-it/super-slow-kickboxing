@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as THREE from './vendor/three.module.min.js';
 import {MOVES,PARRY,STEP,createMatch,startMatch,tick,requestAttack,requestDefense,requestFeint,gloveLocal} from './core.mjs';
-import {handTurnAmount,gloveOrientation,forearmOrientation,parryArmPose,HAND_TURN} from './hand-orientation.mjs';
+import {handTurnAmount,gloveOrientation,forearmOrientation,parryArmPose,parryTapAmount,HAND_TURN} from './hand-orientation.mjs';
 import {addReferenceGlove} from './reference-look.mjs';
 
 const orientation=(f,side)=>gloveOrientation(side,handTurnAmount({
@@ -95,15 +95,15 @@ test('Parry arm retracts from the shoulder with fixed bones and a nearly straigh
     const offset=[sign*.018,.04,side==='L'?-.01:-.13];
     const baseHand=f.parry[side].from.map((v,i)=>v+offset[i]),baseElbow=[sign*.12,1.2,.08],shoulder=[sign*.3,1.39,-.24];
     const vector=a=>new THREE.Vector3(...a);
-    let previous=null,contact=null,peakSpeed=0;
+    let previous=null,contact=null,tapStart=null,tapEnd=null,oldEnd=null,peakSpeed=0;
     while(f.parry[side]){
       const p=f.parry[side],hand=gloveLocal(f,side).map((v,i)=>v+offset[i]);
-      const pose=parryArmPose({side,shoulder,baseHand,baseElbow,hand,turn:handTurnAmount({parry:p,...PARRY})});
+      const pose=parryArmPose({side,shoulder,baseHand,baseElbow,hand,turn:handTurnAmount({parry:p,...PARRY}),tapAmount:parryTapAmount({parry:p,...PARRY})});
       const wrist=vector(HAND_TURN.wrist).applyQuaternion(pose.quaternion).add(vector(pose.hand));
       const axis=vector([0,1,0]).applyQuaternion(pose.quaternion),forearm=wrist.clone().sub(vector(pose.elbow)).normalize();
       const bend=axis.angleTo(forearm)*180/Math.PI;
       assert(bend<30,'wrist must not fold to make the palm horizontal');
-      assert(vector(pose.hand).distanceTo(vector(hand))<1e-6,'keep the glove on its accepted contact path');
+      assert(vector(pose.hand).distanceTo(vector(hand))<.045,'keep the visual tap close to the collision path');
       assert(Math.abs(vector(pose.elbow).distanceTo(vector(shoulder))-pose.upperLength)<1e-6);
       assert(Math.abs(vector(pose.elbow).distanceTo(wrist)-pose.forearmLength)<1e-6);
       assert(pose.elbow[0]*sign>0,'elbow must stay on its own side of the body');
@@ -112,6 +112,8 @@ test('Parry arm retracts from the shoulder with fixed bones and a nearly straigh
         assert(vector(previous.elbow).distanceTo(vector(pose.elbow))<.015,'elbow must move continuously');
       }
       if(p.t>=.4666&&!contact){contact={pose,bend};assert(bend<5);assert(palm(pose.quaternion).y<-.1);}
+      if(p.t>=PARRY.prepare&&!tapStart)tapStart=pose;
+      if(p.t>=PARRY.prepare+PARRY.tap&&!tapEnd){tapEnd=pose;oldEnd=parryArmPose({side,shoulder,baseHand,baseElbow,hand,turn:handTurnAmount({parry:p,...PARRY})});}
       previous=pose;tick(s,STEP,{cpuEnabled:false});
     }
     assert(contact.pose.elbow[2]<baseElbow[2]-.025,'elbow must retract towards the body at contact');
@@ -119,5 +121,11 @@ test('Parry arm retracts from the shoulder with fixed bones and a nearly straigh
     assert(vector(previous.elbow).distanceTo(vector(baseElbow))<.002,'elbow must return to guard');
     assert(previous.quaternion.angleTo(gloveOrientation(side,0))<.003);
     assert(peakSpeed<7,'joint correction must preserve the slower parry');
+    assert(tapStart.hand[1]-tapEnd.hand[1]>.115&&tapStart.hand[1]-tapEnd.hand[1]<.125,'tap must descend about 12 cm');
+    assert(Math.abs(tapStart.hand[2]-tapEnd.hand[2])<.001,'elbow retraction must cancel the fist forward swing');
+    assert(tapEnd.elbow[2]<tapStart.elbow[2]-.07,'elbow must retract throughout the downward stroke');
+    const pitch=pose=>Math.atan2(pose.wrist[2]-pose.elbow[2],pose.wrist[1]-pose.elbow[1]);
+    assert(pitch(tapEnd)>pitch(tapStart)+5*Math.PI/180,'forearm must tip forward while the glove descends');
+    assert(pitch(tapEnd)>pitch(oldEnd)+Math.PI/180,'forearm must lean further than the previous motion');
   }
 });

@@ -1,7 +1,7 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,HEAD_BLOCK,PARRY,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,parryStatus,clamp} from './core.mjs?v=0.33';
-import {REFERENCE_LOOK as LOOK,bodyRhythm,addReferenceArena,addReferenceGlove} from './reference-look.mjs?v=0.33';
-import {HAND_TURN,handTurnAmount,gloveOrientation,forearmOrientation,parryArmPose} from './hand-orientation.mjs?v=0.33';
+import {MOVES,HEAD_BLOCK,PARRY,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,parryStatus,clamp} from './core.mjs?v=0.34';
+import {REFERENCE_LOOK as LOOK,bodyRhythm,addReferenceArena,addReferenceGlove} from './reference-look.mjs?v=0.34';
+import {HAND_TURN,handTurnAmount,gloveOrientation,forearmOrientation,parryArmPose,parryTapAmount} from './hand-orientation.mjs?v=0.34';
 
 export function createView(container,{reference=false,cameraMotion=true}={}){
   const background=reference?'#10151e':'#172a2c';
@@ -150,7 +150,7 @@ export function createView(container,{reference=false,cameraMotion=true}={}){
             const baseOpen=[(shoulder[0]+baseMechanical[0])*.5+sign*.035,Math.min(shoulder[1],baseMechanical[1])-.17,(shoulder[2]+baseMechanical[2])*.5-.09];
             const baseElbow=baseOpen.map((v,j)=>v+(tuckedElbow[j]-v)*blockPose);
             const baseShoulder=[sign*.30,1.39+bodyRhythm(s.time-p.t,i,idleHands).y,-.24];
-            const pose=parryArmPose({side,shoulder:armRoot,baseShoulder,baseHand,baseElbow,hand:renderedHand,turn});
+            const pose=parryArmPose({side,shoulder:armRoot,baseShoulder,baseHand,baseElbow,hand:renderedHand,turn,tapAmount:parryTapAmount({parry:p,...PARRY})});
             elbow.splice(0,3,...pose.elbow);renderedHand.splice(0,3,...pose.hand);
             a.gloves[side].quaternion.copy(pose.quaternion);a.gloves[side].position.set(...renderedHand);
             setSegment(a.arms[side].upper,armRoot,elbow);a.elbows[side].position.set(...elbow);
