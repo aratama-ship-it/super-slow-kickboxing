@@ -3,6 +3,8 @@ import {MOVES,HEAD_BLOCK,PARRY,visualGloveLocal,gloveLocal,restingGlove,slipOffs
 import {REFERENCE_LOOK as LOOK,bodyRhythm,addReferenceArena,addReferenceGlove} from './reference-look.mjs?v=0.47';
 import {HAND_TURN,handTurnAmount,gloveOrientation,forearmOrientation,parryArmPose,parryTapAmount} from './hand-orientation.mjs?v=0.49';
 
+const OPPONENT_GUARD_ELBOW=Object.freeze({lateral:.31,leadForward:-.10,rearForward:.15,height:1.20});
+
 export function createView(container,{reference=false,cameraMotion=true}={}){
   const background=reference?'#10151e':'#172a2c';
   const scene=new THREE.Scene();scene.background=new THREE.Color(background);scene.fog=new THREE.Fog(background,reference?4:5,reference?13:16);
@@ -132,8 +134,13 @@ export function createView(container,{reference=false,cameraMotion=true}={}){
           hand[2]+((closeGuard?LOOK.guardForward:HEAD_BLOCK.visualGloveForward)+guardDepth-HEAD_BLOCK.gloveForward)*visualBlock,
         ];
         const blockTuck=visualBlock*(1-clamp(handTravel/.18,0,1));
-        const [tuckX,tuckZ]=rotateXZ(sign*HEAD_BLOCK.elbowX,HEAD_BLOCK.elbowForward,blockTurn.turn);
-        const tuckedElbow=[tuckX-(side==='L'?blockTurn.gloveInward*.5:0),HEAD_BLOCK.elbowY,tuckZ];
+        // The opponent's guard elbow follows the turned chest, outside its silhouette.
+        const [tuckX,tuckZ]=i===1
+          ?rotateXZ(sign*OPPONENT_GUARD_ELBOW.lateral,stanceRole(f,side)==='lead'?OPPONENT_GUARD_ELBOW.leadForward:OPPONENT_GUARD_ELBOW.rearForward,bodyYaw)
+          :rotateXZ(sign*HEAD_BLOCK.elbowX,HEAD_BLOCK.elbowForward,blockTurn.turn);
+        const tuckedElbow=i===1
+          ?[tuckX+rhythm.x,OPPONENT_GUARD_ELBOW.height+rhythm.y,tuckZ+jabBody.chestForward]
+          :[tuckX-(side==='L'?blockTurn.gloveInward*.5:0),HEAD_BLOCK.elbowY,tuckZ];
         const elbow=openElbow.map((value,index)=>value+(tuckedElbow[index]-value)*blockTuck);
         // Keep the first-person upper-arm attachment behind the eye, preventing
         // a cut cylinder cap in the near plane while keeping the arm connected.
