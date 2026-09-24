@@ -3,8 +3,8 @@ import {MOVES,HEAD_BLOCK,PARRY,visualGloveLocal,gloveLocal,restingGlove,slipOffs
 import {REFERENCE_LOOK as LOOK,bodyRhythm,addReferenceArena,addReferenceGlove} from './reference-look.mjs?v=0.47';
 import {HAND_TURN,handTurnAmount,gloveOrientation,forearmOrientation,parryArmPose,parryTapAmount} from './hand-orientation.mjs?v=0.49';
 
-const OPPONENT_GUARD_ELBOW=Object.freeze({lateral:.31,leadForward:-.10,rearForward:.15,height:1.20});
-const OPPONENT_LEAD_SHOULDER=Object.freeze({lateral:.27,forward:-.25});
+const OPPONENT_GUARD_ELBOW=Object.freeze({leadLateral:.27,rearLateral:.31,leadForward:-.03,rearForward:.15,leadHeight:1.19,rearHeight:1.20});
+const OPPONENT_LEAD_SHOULDER=Object.freeze({lateral:.27,forward:.20,height:1.33,scale:Object.freeze([.08,.10,.08])});
 
 export function createView(container,{reference=false,cameraMotion=true}={}){
   const background=reference?'#10151e':'#172a2c';
@@ -111,11 +111,12 @@ export function createView(container,{reference=false,cameraMotion=true}={}){
       for(const side of ['L','R']){
         const sign=side==='L'?1:-1,hand=visualGloveLocal(f,side,s.time,{idle:idleHands});
         const leadShoulder=i===1&&stanceRole(f,side)==='lead';
-        // In this turned stance the lead forearm passes in front of the shoulder.
-        // Keep its shoulder anchor behind that line without moving the glove or hit pose.
+        // A boxer rolls the lead shoulder forward into the guard. Keep the
+        // joint attached to the chest instead of moving its sphere behind the arm.
         const [shoulderX,shoulderZ]=rotateXZ(sign*(leadShoulder?OPPONENT_LEAD_SHOULDER.lateral:.3),leadShoulder?OPPONENT_LEAD_SHOULDER.forward:0,bodyYaw);
-        const shoulder=[shoulderX+headX*.3+rhythm.x,1.39+rhythm.y,shoulderAdvance+shoulderZ];
+        const shoulder=[shoulderX+headX*.3+rhythm.x,(leadShoulder?OPPONENT_LEAD_SHOULDER.height:1.39)+rhythm.y,shoulderAdvance+shoulderZ];
         a.shoulders[side].position.set(...shoulder);
+        if(i===1)a.shoulders[side].scale.set(...(leadShoulder?OPPONENT_LEAD_SHOULDER.scale:[.115,.12,.125]));
         const active=attack&&m.side===side;
         const openElbow=[(shoulder[0]+hand[0])*.5+sign*(active&&m.kind==='hook'?.16:reference?.035:.085),Math.min(shoulder[1],hand[1])-.17,(shoulder[2]+hand[2])*.5-.09];
         const defense=f.defense[side],guardU=clamp(defense.t/HEAD_BLOCK.transition,0,1),guardEase=guardU*guardU*(3-2*guardU);
@@ -139,12 +140,12 @@ export function createView(container,{reference=false,cameraMotion=true}={}){
           hand[2]+((closeGuard?LOOK.guardForward:HEAD_BLOCK.visualGloveForward)+guardDepth-HEAD_BLOCK.gloveForward)*visualBlock,
         ];
         const blockTuck=visualBlock*(1-clamp(handTravel/.18,0,1));
-        // The opponent's guard elbow follows the turned chest, outside its silhouette.
+        // The opponent's guard elbow follows the turned chest and stays by the ribs.
         const [tuckX,tuckZ]=i===1
-          ?rotateXZ(sign*OPPONENT_GUARD_ELBOW.lateral,stanceRole(f,side)==='lead'?OPPONENT_GUARD_ELBOW.leadForward:OPPONENT_GUARD_ELBOW.rearForward,bodyYaw)
+          ?rotateXZ(sign*(leadShoulder?OPPONENT_GUARD_ELBOW.leadLateral:OPPONENT_GUARD_ELBOW.rearLateral),leadShoulder?OPPONENT_GUARD_ELBOW.leadForward:OPPONENT_GUARD_ELBOW.rearForward,bodyYaw)
           :rotateXZ(sign*HEAD_BLOCK.elbowX,HEAD_BLOCK.elbowForward,blockTurn.turn);
         const tuckedElbow=i===1
-          ?[tuckX+rhythm.x,OPPONENT_GUARD_ELBOW.height+rhythm.y,tuckZ+jabBody.chestForward]
+          ?[tuckX+rhythm.x,(leadShoulder?OPPONENT_GUARD_ELBOW.leadHeight:OPPONENT_GUARD_ELBOW.rearHeight)+rhythm.y,tuckZ+jabBody.chestForward]
           :[tuckX-(side==='L'?blockTurn.gloveInward*.5:0),HEAD_BLOCK.elbowY,tuckZ];
         const elbow=openElbow.map((value,index)=>value+(tuckedElbow[index]-value)*blockTuck);
         // Keep the first-person upper-arm attachment behind the eye, preventing
