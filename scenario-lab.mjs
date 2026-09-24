@@ -25,7 +25,7 @@ import {
   requestDefense,
   startMatch,
   tick,
-} from './core.mjs?v=0.48';
+} from './core.mjs?v=0.49';
 
 export const LAB_CASES=Object.freeze([
   Object.freeze({
@@ -56,7 +56,7 @@ export const LAB_CASES=Object.freeze([
     defense:'左手パーリング＋体の右回旋',viewLabel:'左手パーリング',defenseAt:3.15,defenseSide:'L',
     initialTurn:'both-head',
     conditions:Object.freeze(['パンチの間合い','相手は鼻から口の高さへ左ジャブ','両手を額に添えた右回旋12°の構え','拳が見えてから3.15 TUに左手パーリング','ジャブ進行80〜82.5%で左グローブと接触','他の入力なし']),
-    expected:'左手が真上から小さく落ちて青い拳に接触する。青い拳はそこで止まらず、まず赤い右グローブの下を通り、こちらへ約14cm進みながら画面右へ約30cm外れる。ダメージ0。青い左腕だけ4 TU使用不能となり、赤い左手は構えへ戻る。横方向の量、体幹の回し方、視界は本人確認待ち。',
+    expected:'左手を接触へ向けて少し前に出し、真上から小さく落として青い拳に触れる。青い拳はそこで止まらず、まず赤い右グローブの下を通り、こちらへ約14cm進みながら画面右へ約21cm外れる。ダメージ0。青い左腕だけ4 TU使用不能となり、赤い左手は構えへ戻る。調整後の動きは本人確認待ち。',
   }),
 ]);
 
@@ -118,7 +118,7 @@ function completeChecks(run){
   ];
   if(definition.id==='jab-left-parry')return [
     {label:'ジャブが見えてから左手を出し、進行80%付近で接触',pass:run.defenseIssuedAt>MOVES.jab.cue&&event?.type==='block'&&event?.defense==='parry'&&event?.technique==='left-cross'&&event.punchProgress>=PARRY.contactProgress.jab&&event.punchProgress<=PARRY.contactProgress.jab+PARRY.progressTolerance},
-    {label:'左グローブが真上から小さく下り、青い拳へ触れた',pass:run.parryStart&&run.tapStart&&impact?.defenderLeftParry==='tap'&&run.tapStart[1]-run.parryStart[1]>=.04&&run.tapStart[1]-impact.defenderLeftGlove[1]>=.04&&event?.gloveDistance<=PARRY.crossContactDistance},
+    {label:'左グローブが少し前へ出て、上から小さく青い拳へ触れた',pass:run.parryStart&&run.tapStart&&impact?.defenderLeftParry==='tap'&&run.tapStart[1]-run.parryStart[1]>=.04&&run.tapStart[1]-impact.defenderLeftGlove[1]>=.04&&impact.defenderLeftGlove[2]-run.parryStart[2]>=.10&&event?.gloveDistance<=PARRY.crossContactDistance},
     {label:'赤い左腕は弾かれず、頭へのダメージ0',pass:impact?.playerHp===100&&event?.damage===0&&impact?.defenderLeftDeflection===0&&impact?.defenderRightDeflection===0},
     {label:'青い左拳が右グローブを貫かず、前進しながら画面右へ外れた',pass:impact?.attackerLeftDeflection>ARM_DEFLECT_TU-.2&&run.rebound?.rightward>=PARRY.crossDeflectRight-.02&&run.rebound?.forward>=PARRY.deflectForward-.02&&run.rebound?.downward>=PARRY.crossDeflectDrop-.02&&run.rightClearanceMin>=.26},
     {label:'青い左腕と赤い左手が構えへ復帰した',pass:deflectionRemaining(state.fighters[1],'L')===0&&!parryStatus(state.fighters[0],'L')&&currentDefense(state.fighters[0],'L')==='block'},

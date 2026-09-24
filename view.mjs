@@ -1,7 +1,7 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,HEAD_BLOCK,PARRY,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,leftBlockMotion,parryStatus,clamp} from './core.mjs?v=0.48';
+import {MOVES,HEAD_BLOCK,PARRY,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,leftBlockMotion,parryStatus,clamp} from './core.mjs?v=0.49';
 import {REFERENCE_LOOK as LOOK,bodyRhythm,addReferenceArena,addReferenceGlove} from './reference-look.mjs?v=0.47';
-import {HAND_TURN,handTurnAmount,gloveOrientation,forearmOrientation,parryArmPose,parryTapAmount} from './hand-orientation.mjs?v=0.48.1';
+import {HAND_TURN,handTurnAmount,gloveOrientation,forearmOrientation,parryArmPose,parryTapAmount} from './hand-orientation.mjs?v=0.49';
 
 export function createView(container,{reference=false,cameraMotion=true}={}){
   const background=reference?'#10151e':'#172a2c';

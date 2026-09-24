@@ -1,14 +1,14 @@
-import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.48';
+import {createMatch,startMatch,pauseMatch,tick,STEP,MOVES,DEFENSES,distance,currentDefense,deflectionRemaining,parryStatus,requestAttack,requestDefense,requestFeint,requestStep,requestSlip,attackStatus} from './core.mjs?v=0.49';
 import {KEY_BINDINGS,DEFAULT_KEYMAP,normalizeKeymap,assignKey,keyLabel,isAssignableKey} from './keymap.mjs?v=0.41';
-import {LAB_CASES,createLabRun,advanceLabRun,labProgress} from './scenario-lab.mjs?v=0.48';
+import {LAB_CASES,createLabRun,advanceLabRun,labProgress} from './scenario-lab.mjs?v=0.49';
 const $=id=>document.getElementById(id);
 let state=createMatch(),target='head',view=null,lastFrame=0,accumulator=0,lastUi=-1,lastEvent=0,dirty=true;
 let pauseReason='再開すると、同じ姿勢から続きます。';
 const PARRY_EFFECT_DURATION_MS=720;
 let parryEffectTimer=null,parryEffectTarget=null;
 const KEY_STORAGE='super-slow-boxing.keymap.v2';
-const LAB_VERDICT_STORAGE='super-slow-boxing.lab-verdicts.v21';
-const PRIOR_LAB_VERDICT_STORAGE='super-slow-boxing.lab-verdicts.v20';
+const LAB_VERDICT_STORAGE='super-slow-boxing.lab-verdicts.v22';
+const PRIOR_LAB_VERDICT_STORAGE='super-slow-boxing.lab-verdicts.v21';
 let keyMap=loadSavedKeys(),listeningAction=null;
 let labCaseIndex=0,labRun=null,labVerdicts=loadLabVerdicts();
 const LAB_REPLAY_GAP_SECONDS=2;
@@ -43,9 +43,13 @@ function loadSavedKeys(){
 }
 function loadLabVerdicts(){
   try{
-    const current=localStorage.getItem(LAB_VERDICT_STORAGE),saved=JSON.parse(current??localStorage.getItem(PRIOR_LAB_VERDICT_STORAGE)??localStorage.getItem('super-slow-boxing.lab-verdicts.v19')??localStorage.getItem('super-slow-boxing.lab-verdicts.v18')??localStorage.getItem('super-slow-boxing.lab-verdicts.v17')??localStorage.getItem('super-slow-boxing.lab-verdicts.v16')??'{}');
+    const current=localStorage.getItem(LAB_VERDICT_STORAGE),prior=localStorage.getItem(PRIOR_LAB_VERDICT_STORAGE);
+    const saved=JSON.parse(current??prior??localStorage.getItem('super-slow-boxing.lab-verdicts.v20')??localStorage.getItem('super-slow-boxing.lab-verdicts.v19')??localStorage.getItem('super-slow-boxing.lab-verdicts.v18')??localStorage.getItem('super-slow-boxing.lab-verdicts.v17')??localStorage.getItem('super-slow-boxing.lab-verdicts.v16')??'{}');
     if(!saved||typeof saved!=='object')return {};
-    if(current===null)delete saved['jab-left-block']; // The closer forehead-depth block needs a fresh human verdict.
+    if(current===null){
+      delete saved['jab-left-parry']; // The changed hand reach and jab trajectory need a fresh human verdict.
+      if(prior===null)delete saved['jab-left-block']; // Preserve the earlier forehead-depth block migration.
+    }
     return saved;
   }catch{return {};}
 }
@@ -304,7 +308,7 @@ function refreshLook(){
 $('look').addEventListener('change',refreshLook);
 $('camera-motion').addEventListener('click',()=>{const enabled=$('camera-motion').getAttribute('aria-pressed')!=='true';$('camera-motion').setAttribute('aria-pressed',String(enabled));$('camera-motion').textContent='視点の揺れ '+(enabled?'ON':'OFF');refreshLook();});
 async function boot(){
-  try{const {createView}=await import('./view.mjs?v=0.48.1');viewFactory=createView;view=createView($('stage'),viewOptions());view.render(state);updateUI();}
+  try{const {createView}=await import('./view.mjs?v=0.49');viewFactory=createView;view=createView($('stage'),viewOptions());view.render(state);updateUI();}
   catch(error){$('load-error').hidden=false;$('load-error').textContent='3D画面を起動できませんでした。WebGLに対応したブラウザで、このページを開き直してください。';$('start').textContent='3Dの起動に失敗';console.error(error);}
   requestAnimationFrame(frame);
 }

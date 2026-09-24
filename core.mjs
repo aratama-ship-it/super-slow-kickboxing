@@ -19,9 +19,9 @@ export const EQUAL_CLASH_DEFLECT_TU=3;
 export const PARRY=Object.freeze({
   prepare:.18,tap:.55,recover:.9,cost:5,contactDistance:.24,
   contactProgress:Object.freeze({jab:.80,cross:.70}),progressTolerance:.025,
-  lift:.055,tapBelowGuard:.025,prepareForward:.08,tapForward:.10,
+  lift:.055,tapBelowGuard:.025,prepareForward:.08,tapForward:.10,crossTapForwardBoost:.04,
   deflectPeak:.45,deflectDrop:.18,deflectForward:.14,
-  crossContactDistance:.14,crossDeflectRight:.30,crossDeflectDrop:.18,crossDeflectDropTime:.12,
+  crossContactDistance:.14,crossDeflectRight:.21,crossDeflectDrop:.18,crossDeflectDropTime:.12,
 });
 export const GUARD_IDLE=Object.freeze({x:.012,y:.018,z:.014,periods:Object.freeze({x:Object.freeze([1.9,.83]),y:Object.freeze([1.5,.71]),z:Object.freeze([2.1,.97])})});
 export const TARGET_HEIGHT=Object.freeze({head:1.64,jabHead:1.54,body:1.12});
@@ -95,7 +95,7 @@ export function requestDefense(s,who,side,mode){
     if(f.attack&&MOVES[f.attack.id].side===side)return result(f,false,'打っている手が戻ってからパーリングできます');
     if(f.stamina<PARRY.cost)return result(f,false,'スタミナを回復してからパーリングできます');
     const from=gloveLocal(f,side).slice(),visual=visualGloveLocal(f,side,s.time);
-    f.parry[side]={t:0,from,used:false,visualOffset:visual.map((v,i)=>v-from[i])};f.stamina-=PARRY.cost;
+    f.parry[side]={t:0,from,used:false,forwardBoost:side==='L'&&f.leftTurnGuard==='both-head'?PARRY.crossTapForwardBoost:0,visualOffset:visual.map((v,i)=>v-from[i])};f.stamina-=PARRY.cost;
     if(f.queue&&MOVES[f.queue.id].side===side)f.queue=null;
     return result(f,true,name+'：手を少し上げ、上から小さく叩きます');
   }
@@ -201,7 +201,7 @@ export function gloveLocal(f,side){
   if(p){
     const offset=slipOffset(f)*.6;
     const above=[p.from[0],p.from[1]+PARRY.lift,p.from[2]+PARRY.prepareForward];
-    const tap=[p.from[0],p.from[1]-PARRY.tapBelowGuard,p.from[2]+PARRY.tapForward];
+    const tap=[p.from[0],p.from[1]-PARRY.tapBelowGuard,p.from[2]+PARRY.tapForward+p.forwardBoost];
     if(p.t<PARRY.prepare)return mix(p.from,above,ease(p.t/PARRY.prepare));
     if(p.t<PARRY.prepare+PARRY.tap)return mix(above,tap,ease((p.t-PARRY.prepare)/PARRY.tap));
     return mix(tap,[base[0]+offset,base[1],base[2]],ease((p.t-PARRY.prepare-PARRY.tap)/PARRY.recover));

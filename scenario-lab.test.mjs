@@ -108,13 +108,14 @@ test('Case 04 catches the visible jab with the left hand and redirects it right 
   assert.equal(impact.event.parrySide,'L');
   assert.ok(impact.event.punchProgress>=.80&&impact.event.punchProgress<=.825);
   assert.ok(impact.event.gloveDistance<=.14);
+  assert.ok(impact.defenderLeftGlove[2]>run.parryStart[2]+.10,'the parrying left glove reaches farther forward before contact');
   assert.equal(impact.event.damage,0);
   assert.equal(impact.playerHp,100);
   assert.ok(impact.attackerLeftDeflection>3.8);
   assert.equal(impact.defenderLeftDeflection,0);
   while(!run.rebound)advanceLabRun(run,STEP);
   const turnedGlove=gloveLocal(run.state.fighters[1],'L');
-  assert.ok(turnedGlove[0]>contactGlove[0]+.28,'the jab moves to the viewer right');
+  assert.ok(turnedGlove[0]>contactGlove[0]+.19&&turnedGlove[0]<contactGlove[0]+.23,'the jab moves about 21 cm to the viewer right');
   assert.ok(turnedGlove[2]>contactGlove[2]+.12,'the jab keeps moving toward the player');
   assert.ok(turnedGlove[1]<contactGlove[1]-.04,'the top tap lowers the jab slightly');
   while(run.status==='running')advanceLabRun(run,STEP);
