@@ -4,9 +4,9 @@ import {JAB_BODY,LEFT_BLOCK_TURN,MOVES,STEP,TARGET_HEIGHT,gloveLocal,leftBlockMo
 import {LAB_CASES,advanceLabRun,createLabRun,runLabToCompletion} from './scenario-lab.mjs';
 
 test('The lab presents jab defenses as separate ordered cases',()=>{
-  assert.equal(LAB_CASES.length,3);
-  assert.deepEqual(LAB_CASES.map(item=>item.id),['jab-right-parry','jab-right-block','jab-left-block']);
-  assert.deepEqual(LAB_CASES.map(item=>item.number),['01','02','03']);
+  assert.equal(LAB_CASES.length,4);
+  assert.deepEqual(LAB_CASES.map(item=>item.id),['jab-right-parry','jab-right-block','jab-left-block','jab-left-parry']);
+  assert.deepEqual(LAB_CASES.map(item=>item.number),['01','02','03','04']);
 });
 
 test('Case 01 proves the lower face target, continuous guard motion, synchronized foot and body work, and the 80% parry',()=>{
@@ -95,6 +95,30 @@ test('Case 03 places the left glove on the jab line, holds contact briefly, then
   assert.equal(run.impact.attackerLeftDeflection,0);
   assert.equal(run.impact.defenderLeftDeflection,0);
   assert.equal(run.impact.defenderRightDeflection,0);
+  assert.equal(run.checks.length,5);
+  assert.equal(run.checks.every(check=>check.pass),true);
+});
+
+test('Case 04 catches the visible jab with the left hand and redirects it right while the arm is unavailable',()=>{
+  const run=createLabRun(3),player=run.state.fighters[0];
+  assert.equal(player.leftTurnGuard,'both-head');
+  while(!run.impact)advanceLabRun(run,STEP);
+  const impact=run.impact,contactGlove=gloveLocal(run.state.fighters[1],'L').slice();
+  assert.equal(impact.event.technique,'left-cross');
+  assert.equal(impact.event.parrySide,'L');
+  assert.ok(impact.event.punchProgress>=.80&&impact.event.punchProgress<=.825);
+  assert.ok(impact.event.gloveDistance<=.14);
+  assert.equal(impact.event.damage,0);
+  assert.equal(impact.playerHp,100);
+  assert.ok(impact.attackerLeftDeflection>3.8);
+  assert.equal(impact.defenderLeftDeflection,0);
+  while(!run.rebound)advanceLabRun(run,STEP);
+  const turnedGlove=gloveLocal(run.state.fighters[1],'L');
+  assert.ok(turnedGlove[0]>contactGlove[0]+.28,'the jab moves to the viewer right');
+  assert.ok(turnedGlove[2]>contactGlove[2]+.12,'the jab keeps moving toward the player');
+  assert.ok(turnedGlove[1]<contactGlove[1]-.04,'the top tap lowers the jab slightly');
+  while(run.status==='running')advanceLabRun(run,STEP);
+  assert.ok(run.rightClearanceMin>=.26,'the redirected jab stays clear of the unused right glove');
   assert.equal(run.checks.length,5);
   assert.equal(run.checks.every(check=>check.pass),true);
 });

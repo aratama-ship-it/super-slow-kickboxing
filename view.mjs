@@ -1,5 +1,5 @@
 import * as THREE from './vendor/three.module.min.js';
-import {MOVES,HEAD_BLOCK,PARRY,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,leftBlockMotion,parryStatus,clamp} from './core.mjs?v=0.47';
+import {MOVES,HEAD_BLOCK,PARRY,visualGloveLocal,gloveLocal,restingGlove,slipOffset,localToWorld,stanceAngles,stanceRole,leadFootMotion,jabBodyMotion,leftBlockMotion,parryStatus,clamp} from './core.mjs?v=0.48';
 import {REFERENCE_LOOK as LOOK,bodyRhythm,addReferenceArena,addReferenceGlove} from './reference-look.mjs?v=0.47';
 import {HAND_TURN,handTurnAmount,gloveOrientation,forearmOrientation,parryArmPose,parryTapAmount} from './hand-orientation.mjs?v=0.47';
 
@@ -139,7 +139,7 @@ export function createView(container,{reference=false,cameraMotion=true}={}){
         // a cut cylinder cap in the near plane while keeping the arm connected.
         const armRoot=reference&&i===0?[sign*.30*Math.cos(blockTurn.turn),shoulder[1],-.24-sign*.30*Math.sin(blockTurn.turn)]:shoulder;
         setSegment(a.arms[side].upper,armRoot,elbow);setSegment(a.arms[side].forearm,elbow,renderedHand);a.elbows[side].position.set(...elbow);
-        const parry=parryStatus(f,side),redirected=f.deflection[side]?.trajectory==='parry-down';
+        const parry=parryStatus(f,side),redirected=f.deflection[side]?.trajectory?.startsWith('parry-');
         let glovePitch=active&&m.kind==='upper'?-.8:redirected?.32:parry?.phase==='tap'?.18:parry?.phase==='prepare'?.04:-.15+.12*blockTuck;
         a.gloves[side].position.set(...renderedHand);a.gloves[side].rotation.set(glovePitch,(side==='L'?-.12:.12)*(1-.45*blockTuck),sign*(.1-.05*blockTuck));
         if(reference){

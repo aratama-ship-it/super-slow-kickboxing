@@ -21,6 +21,7 @@ export const PARRY=Object.freeze({
   contactProgress:Object.freeze({jab:.80,cross:.70}),progressTolerance:.025,
   lift:.055,tapBelowGuard:.025,prepareForward:.08,tapForward:.10,
   deflectPeak:.45,deflectDrop:.18,deflectForward:.14,
+  crossContactDistance:.14,crossDeflectRight:.30,crossDeflectDrop:.18,crossDeflectDropTime:.12,
 });
 export const GUARD_IDLE=Object.freeze({x:.012,y:.018,z:.014,periods:Object.freeze({x:Object.freeze([1.9,.83]),y:Object.freeze([1.5,.71]),z:Object.freeze([2.1,.97])})});
 export const TARGET_HEIGHT=Object.freeze({head:1.64,jabHead:1.54,body:1.12});
@@ -185,6 +186,14 @@ export function gloveLocal(f,side){
       if(d.t<PARRY.deflectPeak)return mix(d.from,peak,ease(d.t/PARRY.deflectPeak));
       return mix(peak,[base[0]+slipOffset(f)*.6,base[1],base[2]],ease((d.t-PARRY.deflectPeak)/(d.duration-PARRY.deflectPeak)));
     }
+    if(d.trajectory==='parry-right'){
+      const peak=[d.from[0]+PARRY.crossDeflectRight,d.from[1]-PARRY.crossDeflectDrop,d.from[2]+PARRY.deflectForward];
+      if(d.t<PARRY.deflectPeak){
+        const travel=ease(d.t/PARRY.deflectPeak),drop=ease(d.t/PARRY.crossDeflectDropTime);
+        return [lerp(d.from[0],peak[0],travel),lerp(d.from[1],peak[1],drop),lerp(d.from[2],peak[2],travel)];
+      }
+      return mix(peak,[base[0]+slipOffset(f)*.6,base[1],base[2]],ease((d.t-PARRY.deflectPeak)/(d.duration-PARRY.deflectPeak)));
+    }
     const sign=side==='L'?1:-1,peak=[sign*.62,clamp(d.from[1]-.18,1.06,1.42),-.02],out=.65;
     if(d.t<out)return mix(d.from,peak,ease(d.t/out));
     return mix(peak,[base[0]+slipOffset(f)*.6,base[1],base[2]],ease((d.t-out)/(d.duration-out)));
@@ -313,15 +322,26 @@ function resolveParries(s){
   const hits=[];
   for(const f of s.fighters){
     const punch=activePunch(f);if(!punch||punch.a.target!=='head'||punch.m.kind!=='straight')continue;
-    const d=s.fighters[1-f.id],side=punch.m.side==='L'?'R':'L',p=parryStatus(d,side);
-    if(!p||p.phase!=='tap'||p.used||deflectionRemaining(d,side)>0)continue;
+    const d=s.fighters[1-f.id],opposite=punch.m.side==='L'?'R':'L';
     const progress=punchTravelProgress(f);
     const targetProgress=PARRY.contactProgress[punch.a.id];
     if(targetProgress===undefined||progress<targetProgress||progress>targetProgress+PARRY.progressTolerance)continue;
-    const incoming=localToWorld(f,gloveLocal(f,punch.m.side)),parryGlove=localToWorld(d,gloveLocal(d,side));
-    if(Math.hypot(...incoming.map((v,i)=>v-parryGlove[i]))>PARRY.contactDistance)continue;
-    hits.push({who:f.id,move:punch.a.id,target:'head',type:'block',defense:'parry',damage:0,deflectSide:punch.m.side,deflectTrajectory:'parry-down',parrySide:side,punchProgress:progress,
-      reason:(side==='L'?'左手':'右手')+'で進行約'+Math.round(targetProgress*100)+'%の拳を上から小さく叩き、攻撃側の'+(punch.m.side==='L'?'左拳':'右拳')+'を下へ弾いた'});
+    const candidates=[opposite];
+    // Case 04 uses the already turned, two-hand forehead guard to reach the
+    // incoming left jab with the lead hand. Ordinary wrong-side parries stay invalid.
+    if(punch.a.id==='jab'&&d.leftTurnGuard==='both-head'&&leftBlockMotion(d).progress>=.9&&currentDefense(d,'R')==='block')candidates.push('L');
+    for(const side of candidates){
+      if(hits.some(hit=>hit.who===f.id))break;
+      const p=parryStatus(d,side);
+      if(!p||p.phase!=='tap'||p.used||deflectionRemaining(d,side)>0)continue;
+      const incoming=localToWorld(f,gloveLocal(f,punch.m.side)),parryGlove=localToWorld(d,gloveLocal(d,side));
+      const cross=side==='L'&&punch.a.id==='jab';
+      const contactDistance=cross?PARRY.crossContactDistance:PARRY.contactDistance;
+      const gloveDistance=Math.hypot(...incoming.map((v,i)=>v-parryGlove[i]));
+      if(gloveDistance>contactDistance)continue;
+      hits.push({who:f.id,move:punch.a.id,target:'head',type:'block',defense:'parry',technique:cross?'left-cross':undefined,damage:0,deflectSide:punch.m.side,deflectTrajectory:cross?'parry-right':'parry-down',parrySide:side,punchProgress:progress,gloveDistance,
+        reason:(side==='L'?'左手':'右手')+'で進行約'+Math.round(targetProgress*100)+'%の拳を上から小さく叩き、攻撃側の'+(punch.m.side==='L'?'左拳':'右拳')+'を'+(cross?'画面右へ':'下へ')+'弾いた'});
+    }
   }
   // Both fighters' contacts are sampled before either arm is displaced.
   for(const h of hits)s.fighters[1-h.who].parry[h.parrySide].used=true;

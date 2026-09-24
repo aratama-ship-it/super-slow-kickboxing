@@ -11,6 +11,7 @@ import {
   currentDefense,
   deflectionRemaining,
   gloveLocal,
+  localToWorld,
   restingGlove,
   clamp,
   visualGloveLocal,
@@ -24,7 +25,7 @@ import {
   requestDefense,
   startMatch,
   tick,
-} from './core.mjs?v=0.47';
+} from './core.mjs?v=0.48';
 
 export const LAB_CASES=Object.freeze([
   Object.freeze({
@@ -49,6 +50,14 @@ export const LAB_CASES=Object.freeze([
     conditions:Object.freeze(['パンチの間合い','相手は頭へ左ジャブ','開始時は両手とも腹の位置','0.75 TUから両手を額へ上げ、体を右へ12°ひねって左手をジャブの進路へ置く','左右のグローブは額の同じ奥行き、青い拳は赤い左グローブへ接触','他の入力なし']),
     expected:'両手を腹から額へ上げ、左右のグローブを額の同じ奥行きに置く。実際のグローブと前腕で視界が狭くなり、中央の細い隙間から相手が見える。体を右へ回して左拳をジャブの進路へ置き、接触した青い拳と前足・腰は短く止まって、横へ流れず元の構えへ戻る。ダメージ0、両者の腕は弾かれない。視界の幅とフォームの自然さは本人確認待ち。',
   }),
+  Object.freeze({
+    id:'jab-left-parry',number:'04',title:'相手の左ジャブ × 左手パーリング',
+    question:'左手で上から小さく触れ、青い拳を止めずに画面右へ外せるか。',
+    defense:'左手パーリング＋体の右回旋',viewLabel:'左手パーリング',defenseAt:3.15,defenseSide:'L',
+    initialTurn:'both-head',
+    conditions:Object.freeze(['パンチの間合い','相手は鼻から口の高さへ左ジャブ','両手を額に添えた右回旋12°の構え','拳が見えてから3.15 TUに左手パーリング','ジャブ進行80〜82.5%で左グローブと接触','他の入力なし']),
+    expected:'左手が真上から小さく落ちて青い拳に接触する。青い拳はそこで止まらず、まず赤い右グローブの下を通り、こちらへ約14cm進みながら画面右へ約30cm外れる。ダメージ0。青い左腕だけ4 TU使用不能となり、赤い左手は構えへ戻る。横方向の量、体幹の回し方、視界は本人確認待ち。',
+  }),
 ]);
 
 const captureImpact=(state,event)=>({
@@ -61,6 +70,7 @@ const captureImpact=(state,event)=>({
   defenderLeftDefense:currentDefense(state.fighters[0],'L'),
   defenderRightDefense:currentDefense(state.fighters[0],'R'),
   defenderRightParry:parryStatus(state.fighters[0],'R')?.phase||null,
+  defenderLeftParry:parryStatus(state.fighters[0],'L')?.phase||null,
   attackerLeftGlove:gloveLocal(state.fighters[1],'L').slice(),
   attackerLeadFoot:leadFootMotion(state.fighters[1]),
   attackerBody:jabBodyMotion(state.fighters[1]),
@@ -75,6 +85,7 @@ const captureRebound=(state,impact)=>{
     time:state.time,attackerLeftGlove:glove,
     forward:glove[2]-impact.attackerLeftGlove[2],
     downward:impact.attackerLeftGlove[1]-glove[1],
+    rightward:glove[0]-impact.attackerLeftGlove[0],
   };
 };
 
@@ -105,6 +116,13 @@ function completeChecks(run){
     {label:'自分の右腕も弾かれない',pass:impact.defenderRightDeflection===0},
     {label:'相手のジャブが通常の戻りを完了',pass:state.fighters[1].attack===null&&currentDefense(state.fighters[0],'R')==='block'},
   ];
+  if(definition.id==='jab-left-parry')return [
+    {label:'ジャブが見えてから左手を出し、進行80%付近で接触',pass:run.defenseIssuedAt>MOVES.jab.cue&&event?.type==='block'&&event?.defense==='parry'&&event?.technique==='left-cross'&&event.punchProgress>=PARRY.contactProgress.jab&&event.punchProgress<=PARRY.contactProgress.jab+PARRY.progressTolerance},
+    {label:'左グローブが真上から小さく下り、青い拳へ触れた',pass:run.parryStart&&run.tapStart&&impact?.defenderLeftParry==='tap'&&run.tapStart[1]-run.parryStart[1]>=.04&&run.tapStart[1]-impact.defenderLeftGlove[1]>=.04&&event?.gloveDistance<=PARRY.crossContactDistance},
+    {label:'赤い左腕は弾かれず、頭へのダメージ0',pass:impact?.playerHp===100&&event?.damage===0&&impact?.defenderLeftDeflection===0&&impact?.defenderRightDeflection===0},
+    {label:'青い左拳が右グローブを貫かず、前進しながら画面右へ外れた',pass:impact?.attackerLeftDeflection>ARM_DEFLECT_TU-.2&&run.rebound?.rightward>=PARRY.crossDeflectRight-.02&&run.rebound?.forward>=PARRY.deflectForward-.02&&run.rebound?.downward>=PARRY.crossDeflectDrop-.02&&run.rightClearanceMin>=.26},
+    {label:'青い左腕と赤い左手が構えへ復帰した',pass:deflectionRemaining(state.fighters[1],'L')===0&&!parryStatus(state.fighters[0],'L')&&currentDefense(state.fighters[0],'L')==='block'},
+  ];
   return [
     {label:'両手を額へ上げ、左右の拳の奥行きをそろえた',pass:run.leftBlockIssuedAt!==null&&run.leftBlockStart&&run.leftBlockMidpointY>run.leftBlockStart[1]+.2&&run.leftBlockMidpointY<impact?.defenderLeftGlove[1]-.15&&impact.defenderLeftGlove[1]-run.leftBlockStart[1]>=.4&&run.rightGloveStart&&impact.defenderRightGlove[1]-run.rightGloveStart[1]>=.4&&Math.abs(impact.defenderLeftGlove[2]-impact.defenderRightGlove[2])<.01},
     {label:'青い拳が伸び切る前に赤い左グローブへ接触',pass:impact?.defenderLeftDefense==='block'&&impact?.defenderRightDefense==='block'&&impact.defenderTurn.progress>.9&&event?.punchProgress<1&&event?.gloveDistance<=LEFT_BLOCK_TURN.bothHeadContactDistance&&event?.lineOffset<=LEFT_BLOCK_TURN.lineOffset},
@@ -124,11 +142,11 @@ export function createLabRun(caseIndex=0){
       state.fighters[0].defense[side]={from:mode,to:mode,t:HEAD_BLOCK.transition};
     }
   }
-  if(definition.id==='jab-left-block')state.fighters[0].leftTurnGuard='both-head';
+  if(definition.id==='jab-left-block'||definition.initialTurn)state.fighters[0].leftTurnGuard='both-head';
   startMatch(state);
   const started=requestAttack(state,1,'jab','head');
   if(!started.ok)throw new Error(started.message);
-  return {definition,caseIndex,state,status:'running',defenseIssued:false,defenseIssuedAt:null,leftBlockIssuedAt:null,leftBlockStart:null,leftBlockMidpointY:null,rightGloveStart:definition.initialGuard?gloveLocal(state.fighters[0],'R').slice():null,parryStart:null,tapStart:null,preCueMotion:{samples:0,L:motionRange(),R:motionRange()},punchStartAt:null,leadFootStartAt:null,bodyStartAt:null,leadFootPeak:0,bodyPeak:{hip:0,chest:0,head:0,turn:0},impact:null,rebound:null,holdSamples:0,holdMaxMotion:0,forwardAfterBlockMax:0,returnPathError:0,retreatDistance:0,checks:[]};
+  return {definition,caseIndex,state,status:'running',defenseIssued:false,defenseIssuedAt:null,leftBlockIssuedAt:null,leftBlockStart:null,leftBlockMidpointY:null,rightGloveStart:definition.initialGuard?gloveLocal(state.fighters[0],'R').slice():null,parryStart:null,tapStart:null,preCueMotion:{samples:0,L:motionRange(),R:motionRange()},punchStartAt:null,leadFootStartAt:null,bodyStartAt:null,leadFootPeak:0,bodyPeak:{hip:0,chest:0,head:0,turn:0},impact:null,rebound:null,rightClearanceMin:Infinity,holdSamples:0,holdMaxMotion:0,forwardAfterBlockMax:0,returnPathError:0,retreatDistance:0,checks:[]};
 }
 
 export function advanceLabRun(run,dt=STEP){
@@ -154,18 +172,25 @@ export function advanceLabRun(run,dt=STEP){
   }
   if(run.leftBlockIssuedAt!==null&&run.leftBlockMidpointY===null&&run.state.time>=run.leftBlockIssuedAt+HEAD_BLOCK.transition/2)run.leftBlockMidpointY=gloveLocal(run.state.fighters[0],'L')[1];
   if(run.definition.defenseAt!==null&&!run.defenseIssued&&run.state.time>=run.definition.defenseAt){
-    run.parryStart=gloveLocal(run.state.fighters[0],'R').slice();
-    const defense=requestDefense(run.state,0,'R','parry');
+    const side=run.definition.defenseSide||'R';
+    run.parryStart=gloveLocal(run.state.fighters[0],side).slice();
+    const defense=requestDefense(run.state,0,side,'parry');
     if(!defense.ok)throw new Error(defense.message);
     run.defenseIssued=true;
     run.defenseIssuedAt=run.state.time;
   }
-  if(!run.tapStart&&parryStatus(run.state.fighters[0],'R')?.phase==='tap')run.tapStart=gloveLocal(run.state.fighters[0],'R').slice();
+  const parrySide=run.definition.defenseSide||'R';
+  if(!run.tapStart&&parryStatus(run.state.fighters[0],parrySide)?.phase==='tap')run.tapStart=gloveLocal(run.state.fighters[0],parrySide).slice();
   if(!run.impact&&run.state.eventId>previousEventId){
     const event=run.state.events.at(-1);
     run.impact=captureImpact(run.state,event);
   }
   if(!run.impact)return run;
+  if(run.definition.id==='jab-left-parry'&&attacker.deflection.L?.t<=PARRY.deflectPeak){
+    const blue=localToWorld(attacker,gloveLocal(attacker,'L'));
+    const redRight=localToWorld(run.state.fighters[0],gloveLocal(run.state.fighters[0],'R'));
+    run.rightClearanceMin=Math.min(run.rightClearanceMin,Math.hypot(...blue.map((v,i)=>v-redRight[i])));
+  }
   if(run.definition.id==='jab-left-block'&&attacker.attack?.blocked){
     const pose=gloveLocal(attacker,'L'),blocked=attacker.attack.blocked,from=blocked.from,elapsed=attacker.attack.t-blocked.startT;
     if(elapsed<blocked.hold){
@@ -179,9 +204,9 @@ export function advanceLabRun(run,dt=STEP){
       run.returnPathError=Math.max(run.returnPathError,Math.hypot(...pose.map((v,i)=>v-from[i]-axis[i]*u)));
     }
   }
-  if(!run.rebound&&run.definition.id==='jab-right-parry'&&run.state.fighters[1].deflection.L?.t>=PARRY.deflectPeak)run.rebound=captureRebound(run.state,run.impact);
-  const recovered=run.definition.id==='jab-right-parry'
-    ? deflectionRemaining(run.state.fighters[1],'L')===0&&!parryStatus(run.state.fighters[0],'R')
+  if(!run.rebound&&['jab-right-parry','jab-left-parry'].includes(run.definition.id)&&run.state.fighters[1].deflection.L?.t>=PARRY.deflectPeak)run.rebound=captureRebound(run.state,run.impact);
+  const recovered=['jab-right-parry','jab-left-parry'].includes(run.definition.id)
+    ? deflectionRemaining(run.state.fighters[1],'L')===0&&!parryStatus(run.state.fighters[0],parrySide)
     : run.state.fighters[1].attack===null;
   if(recovered){
     run.status='complete';
@@ -195,12 +220,13 @@ export function labProgress(run){
   if(!run)return {phase:'ready',label:'再生前'};
   if(run.status==='complete')return {phase:'complete',label:'復帰まで確認'};
   if(run.impact){
-    const remaining=run.definition.id==='jab-right-parry'?deflectionRemaining(run.state.fighters[1],'L'):0;
-    return {phase:'rebound',label:remaining>0?(run.rebound?'相手の左拳が前進しながら下へ弾かれ中 ':'相手の左拳を下へ弾いている ')+remaining.toFixed(1)+' TU':'復帰を確認中'};
+    const remaining=['jab-right-parry','jab-left-parry'].includes(run.definition.id)?deflectionRemaining(run.state.fighters[1],'L'):0;
+    const direction=run.definition.id==='jab-left-parry'?'画面右':'下';
+    return {phase:'rebound',label:remaining>0?(run.rebound?'相手の左拳が前進しながら'+direction+'へ弾かれ中 ':'相手の左拳を'+direction+'へ弾いている ')+remaining.toFixed(1)+' TU':'復帰を確認中'};
   }
   if(run.definition.defenseAt!==null&&run.defenseIssued){
-    const parry=parryStatus(run.state.fighters[0],'R');
-    return {phase:'defense',label:parry?.phase==='prepare'?'右手を少し上へ準備中':parry?.phase==='tap'?'右手を上から小さく落としている':'接触を確認中'};
+    const side=run.definition.defenseSide||'R',hand=side==='L'?'左手':'右手',parry=parryStatus(run.state.fighters[0],side);
+    return {phase:'defense',label:parry?.phase==='prepare'?hand+'を少し上へ準備中':parry?.phase==='tap'?hand+'を上から小さく落としている':'接触を確認中'};
   }
   if(run.definition.leftBlockAt!==undefined){
     if(run.leftBlockIssuedAt===null)return {phase:'setup',label:'両手を額へ上げるブロッキングを待っている'};
