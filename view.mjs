@@ -4,6 +4,7 @@ import {REFERENCE_LOOK as LOOK,bodyRhythm,addReferenceArena,addReferenceGlove} f
 import {HAND_TURN,handTurnAmount,gloveOrientation,forearmOrientation,parryArmPose,parryTapAmount} from './hand-orientation.mjs?v=0.49';
 
 const OPPONENT_GUARD_ELBOW=Object.freeze({lateral:.31,leadForward:-.10,rearForward:.15,height:1.20});
+const OPPONENT_LEAD_SHOULDER=Object.freeze({lateral:.27,forward:-.25});
 
 export function createView(container,{reference=false,cameraMotion=true}={}){
   const background=reference?'#10151e':'#172a2c';
@@ -108,7 +109,11 @@ export function createView(container,{reference=false,cameraMotion=true}={}){
         leg.hem.position.set(hip[0],.78,hip[2]);leg.hem.rotation.y=bodyYaw;
       }
       for(const side of ['L','R']){
-        const sign=side==='L'?1:-1,hand=visualGloveLocal(f,side,s.time,{idle:idleHands}),[shoulderX,shoulderZ]=rotateXZ(sign*.3,0,bodyYaw);
+        const sign=side==='L'?1:-1,hand=visualGloveLocal(f,side,s.time,{idle:idleHands});
+        const leadShoulder=i===1&&stanceRole(f,side)==='lead';
+        // In this turned stance the lead forearm passes in front of the shoulder.
+        // Keep its shoulder anchor behind that line without moving the glove or hit pose.
+        const [shoulderX,shoulderZ]=rotateXZ(sign*(leadShoulder?OPPONENT_LEAD_SHOULDER.lateral:.3),leadShoulder?OPPONENT_LEAD_SHOULDER.forward:0,bodyYaw);
         const shoulder=[shoulderX+headX*.3+rhythm.x,1.39+rhythm.y,shoulderAdvance+shoulderZ];
         a.shoulders[side].position.set(...shoulder);
         const active=attack&&m.side===side;
