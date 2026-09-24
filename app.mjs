@@ -304,7 +304,7 @@ function refreshLook(){
 $('look').addEventListener('change',refreshLook);
 $('camera-motion').addEventListener('click',()=>{const enabled=$('camera-motion').getAttribute('aria-pressed')!=='true';$('camera-motion').setAttribute('aria-pressed',String(enabled));$('camera-motion').textContent='視点の揺れ '+(enabled?'ON':'OFF');refreshLook();});
 async function boot(){
-  try{const {createView}=await import('./view.mjs?v=0.48');viewFactory=createView;view=createView($('stage'),viewOptions());view.render(state);updateUI();}
+  try{const {createView}=await import('./view.mjs?v=0.48.1');viewFactory=createView;view=createView($('stage'),viewOptions());view.render(state);updateUI();}
   catch(error){$('load-error').hidden=false;$('load-error').textContent='3D画面を起動できませんでした。WebGLに対応したブラウザで、このページを開き直してください。';$('start').textContent='3Dの起動に失敗';console.error(error);}
   requestAnimationFrame(frame);
 }
